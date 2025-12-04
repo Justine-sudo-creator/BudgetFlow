@@ -1,0 +1,188 @@
+/**
+ * This ruleset enforces a strict user-ownership security model for a personal
+ * budgeting application. It ensures that users can only access and manage their
+ * own financial data, promoting strong privacy and data integrity.
+ *
+ * Core Philosophy:
+ * The security model is built on the principle that all user-specific data is
+ * private and isolated. A user's authentication credential (auth.uid) is the
+ * sole key to accessing their data tree.
+ *
+ * Data Structure:
+ * All user-specific data, including allowances, expenses, and financial plans,
+ * is nested within a user-specific document path: `/users/{userId}`. This
+ * hierarchical structure makes ownership clear and security rules simple and
+ * performant. A separate top-level collection, `/categories`, stores global
+ * data that is read-only for all users.
+ *
+ * Key Security Decisions:
+ * - Strict Ownership: All subcollections under `/users/{userId}` are accessible
+ *   only by the authenticated user whose UID matches `{userId}`.
+ * - No User Enumeration: Listing the top-level `/users` collection is explicitly
+ *   disallowed to prevent leaking user information.
+ * - Global Read-Only Data: The `/categories` collection is readable by any
+ *   authenticated user but is not writable, protecting the integrity of shared
+ *   application data.
+ * - Default Deny: Any operation not explicitly permitted is denied.
+ *
+ * Denormalization for Authorization:
+ * This ruleset leverages a path-based security model, which is a form of
+ * structural denormalization. By placing a user's data directly under a path
+ * containing their UID, we avoid costly `get()` calls to other documents for
+ * authorization checks. For instance, securing `/users/{userId}/expenses/{expId}`
+ * only requires checking the `{userId}` from the path, not looking up an
+ * `ownerId` field.
+ *
+ * Structural Segregation:
+ * The design separates private user data from public application data.
+ * - Private User Data: `/users/{userId}/...`
+ * - Public/Global Data: `/categories/{categoryId}`
+ * This segregation ensures that queries for public data (like categories) are
+ * fast and secure, as they never have to filter out private documents.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Checks if a user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the currently authenticated user's UID matches the given userId.
+     * This is the primary function for enforcing data ownership.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Validates that a user is creating their own user document and that the
+     * document's internal `email` field matches their UID for data consistency.
+     */
+    function isCreatingOwnValidUserDoc(userId) {
+      let data = request.resource.data;
+      return isOwner(userId)
+             && data.email == request.auth.token.email;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Manages user profile documents.
+     * @path /users/{userId}
+     * @allow A user (uid: 'user123') (create) their own profile at `/users/user123`.
+     * @deny An anonymous user (read) any user profile.
+     * @principle Restricts access to a user's own data tree and prevents user enumeration.
+     */
+    match /users/{userId} {
+      allow get, delete: if isOwner(userId);
+      allow list: if false;
+      allow create: if isCreatingOwnValidUserDoc(userId);
+      allow update: if isOwner(userId) &&
+                       // Allow updating other fields, but disallow changing email
+                       request.resource.data.email == resource.data.email;
+    }
+
+    /**
+     * @description Manages a user's allowance settings.
+     * @path /users/{userId}/allowances/{allowanceId}
+     * @allow A user (uid: 'user123') (create) a document at `/users/user123/allowances/abc`.
+     * @deny A different user (uid: 'user456') (read) a document at `/users/user123/allowances/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/allowances/{allowanceId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    /**
+     * @description Manages a user's budgets.
+     * @path /users/{userId}/budgets/{budgetId}
+     * @allow A user (uid: 'user123') (create) a document at `/users/user123/budgets/abc`.
+     * @deny A different user (uid: 'user456') (read) a document at `/users/user123/budgets/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/budgets/{budgetId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    /**
+     * @description Manages a user's individual expense entries.
+     * @path /users/{userId}/expenses/{expenseId}
+     * @allow A user (uid: 'user123') (list) their expenses at `/users/user123/expenses`.
+     * @deny A different user (uid: 'user456') (delete) an expense at `/users/user123/expenses/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/expenses/{expenseId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    /**
+     * @description Manages a user's individual income entries.
+     * @path /users/{userId}/income/{incomeId}
+     * @allow A user (uid: 'user123') (list) their income at `/users/user123/income`.
+     * @deny A different user (uid: 'user456') (delete) an income at `/users/user123/income/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/income/{incomeId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    /**
+     * @description Manages a user's custom category allocations.
+     * @path /users/{userId}/categoryAllocations/{categoryAllocationId}
+     * @allow A user (uid: 'user123') (update) an allocation at `/users/user123/categoryAllocations/abc`.
+     * @deny A different user (uid: 'user456') (create) an allocation at `/users/user123/categoryAllocations/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/categoryAllocations/{categoryAllocationId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    /**
+     * @description Manages a user's meal plan settings.
+     * @path /users/{userId}/mealPlans/{mealPlanId}
+     * @allow A user (uid: 'user123') (get) their meal plan at `/users/user123/mealPlans/abc`.
+     * @deny A different user (uid: 'user456') (update) the meal plan at `/users/user123/mealPlans/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/mealPlans/{mealPlanId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    /**
+     * @description Manages a user's transport plan settings.
+     * @path /users/{userId}/transportPlans/{transportPlanId}
+     * @allow A user (uid: 'user123') (create) a transport plan at `/users/user123/transportPlans/abc`.
+     * @deny A different user (uid: 'user456') (get) the plan at `/users/user123/transportPlans/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/transportPlans/{transportPlanId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    /**
+     * @description Stores global expense categories, readable by all authenticated users.
+     * @path /categories/{categoryId}
+     * @allow Any authenticated user (read) a category at `/categories/food`.
+     * @deny Any user (create) a new category. This collection is centrally managed.
+     * @principle Provides global, read-only data to all authenticated users while preventing modification.
+     */
+    match /categories/{categoryId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

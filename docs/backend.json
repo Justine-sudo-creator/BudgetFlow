@@ -1,0 +1,175 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user in the BudgetFlow application.",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "allowance": {
+          "type": "number",
+          "description": "The user's total allowance."
+        },
+        "budgetTarget": {
+          "$ref": "#/entities/BudgetTarget"
+        }
+      },
+      "required": [
+        "email"
+      ]
+    },
+    "Expense": {
+      "title": "Expense",
+      "type": "object",
+      "description": "Represents a single expense entry.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "The amount of the expense."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "The ID of the category this expense belongs to."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notes about the expense."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date of the expense in ISO 8601 format.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "amount",
+        "categoryId",
+        "date"
+      ]
+    },
+    "Income": {
+      "title": "Income",
+      "type": "object",
+      "description": "Represents a single income entry.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "The amount of the income."
+        },
+        "source": {
+          "type": "string",
+          "description": "The source of the income."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date of the income in ISO 8601 format.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "amount",
+        "source",
+        "date"
+      ]
+    },
+    "Budget": {
+      "title": "Budget",
+      "type": "object",
+      "description": "Represents a budget for a specific category.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "The budget amount for the category."
+        }
+      },
+      "required": [
+        "amount"
+      ]
+    },
+    "BudgetTarget": {
+      "title": "BudgetTarget",
+      "type": "object",
+      "description": "Represents a user's spending target.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "The target amount."
+        },
+        "period": {
+          "type": "string",
+          "enum": [
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "description": "The period for the target."
+        }
+      },
+      "required": [
+        "amount",
+        "period"
+      ]
+    },
+    "Category": {
+      "title": "Category",
+      "type": "object",
+      "description": "Represents a pre-defined category for expenses.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the category."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "need",
+            "want",
+            "savings"
+          ]
+        }
+      }
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Stores user profiles and top-level user settings."
+    },
+    "/users/{userId}/expenses/{expenseId}": {
+      "schema": {
+        "$ref": "#/entities/Expense"
+      },
+      "description": "Stores individual expense entries for a user."
+    },
+    "/users/{userId}/income/{incomeId}": {
+      "schema": {
+        "$ref": "#/entities/Income"
+      },
+      "description": "Stores individual income entries for a user."
+    },
+    "/users/{userId}/budgets/{categoryId}": {
+      "schema": {
+        "$ref": "#/entities/Budget"
+      },
+      "description": "Stores a user's budget for a specific category. The document ID is the categoryId."
+    },
+    "/categories/{categoryId}": {
+      "schema": {
+        "$ref": "#/entities/Category"
+      },
+      "description": "Stores global, pre-defined expense categories."
+    }
+  }
+}
