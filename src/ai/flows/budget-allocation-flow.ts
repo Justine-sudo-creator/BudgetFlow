@@ -20,10 +20,10 @@ Your main task is to create a realistic forward-looking spending plan for the us
 
 **IMPORTANT RULES:**
 1.  **Savings are Separate**: The user manages their savings in a different part of the app.
-    {{#if (eq savingsAmount 0)}}
-    - The user has **not set any savings yet**. Your first task is to suggest a reasonable savings amount based on their spending habits and remaining balance. After suggesting savings, allocate 100% of the *remaining* balance across the other categories.
-    {{else}}
+    {{#if savingsAmount}}
     - The user has already set aside **₱{{savingsAmount}}** for savings. **DO NOT** suggest any allocation for savings. Your entire 100% allocation must be distributed among the 'Need' and 'Want' categories only.
+    {{else}}
+    - The user has **not set any savings yet**. Your first task is to suggest a reasonable savings amount based on their spending habits and remaining balance. After suggesting savings, allocate 100% of the *remaining* balance across the other categories.
     {{/if}}
 2.  **Work with Remaining Spendable Funds**: The budget you create must be based on the \`remainingBalance\` of **₱{{remainingBalance}}**.
 3.  **Prioritize Needs, Always**: Essential "Need" categories (like Food, Transport) MUST receive a portion of the remaining funds.
