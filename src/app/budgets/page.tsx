@@ -4,6 +4,7 @@ import { CategoryBudgets } from "@/components/budgets/category-budgets";
 import { SavingsBudget } from "@/components/budgets/savings-budget";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddExpenseButton } from "@/components/add-expense-button";
+import { SinkingFunds } from "@/components/budgets/sinking-funds";
 
 export default function BudgetsPage() {
   return (
@@ -27,8 +28,9 @@ export default function BudgetsPage() {
             </CardContent>
             </Card>
         </div>
-        <div>
+        <div className="space-y-4">
             <SavingsBudget />
+            <SinkingFunds />
         </div>
       </div>
     </div>

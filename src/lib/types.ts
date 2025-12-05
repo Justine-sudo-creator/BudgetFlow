@@ -33,3 +33,10 @@ export type BudgetTarget = {
     amount: number;
     period: 'daily' | 'weekly' | 'monthly';
 }
+
+export type SinkingFund = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+}

@@ -10,7 +10,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import type { Expense, Budget, Category, Income, BudgetTarget } from "@/lib/types";
+import type { Expense, Budget, Category, Income, BudgetTarget, SinkingFund } from "@/lib/types";
 import { seedCategories } from "@/lib/seed";
 import { differenceInDays, parseISO } from "date-fns";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
@@ -40,6 +40,11 @@ interface BudgetContextType {
   setBudgets: (budgets: Budget[]) => Promise<void>;
   budgetTarget: BudgetTarget;
   setBudgetTarget: (target: BudgetTarget) => void;
+  sinkingFunds: SinkingFund[];
+  addSinkingFund: (fund: Omit<SinkingFund, 'id' | 'currentAmount'>) => void;
+  updateSinkingFund: (fund: SinkingFund) => void;
+  deleteSinkingFund: (id: string) => void;
+  allocateToSinkingFund: (id: string, amount: number) => void;
   totalSpent: number;
   remainingBalance: number;
   dailyAverage: number;
@@ -75,11 +80,17 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     if (!userDocRef) return null;
     return collection(userDocRef, 'budgets');
   }, [userDocRef]);
+  
+  const sinkingFundsColRef = useMemoFirebase(() => {
+    if (!userDocRef) return null;
+    return collection(userDocRef, 'sinkingFunds');
+  }, [userDocRef]);
 
   const { data: userData, isLoading: userLoading } = useDoc<any>(userDocRef);
   const { data: expenses, isLoading: expensesLoading } = useCollection<Expense>(expensesColRef);
   const { data: income, isLoading: incomeLoading } = useCollection<Income>(incomeColRef);
   const { data: budgetsFromHook, isLoading: budgetsLoading } = useCollection<Budget>(budgetsColRef);
+  const { data: sinkingFunds, isLoading: sinkingFundsLoading } = useCollection<SinkingFund>(sinkingFundsColRef);
   
   const budgets = useMemo(() => {
     if (!budgetsFromHook) return [];
@@ -90,7 +101,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const allowance = userData?.allowance ?? 0;
   const budgetTarget = userData?.budgetTarget ?? { amount: 0, period: 'daily' };
 
-  const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading;
+  const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading || sinkingFundsLoading;
   
   const categories = seedCategories;
 
@@ -199,6 +210,34 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
       return batch.commit(); // Return the promise from batch.commit()
   }, [firestore, budgetsColRef]);
 
+  const addSinkingFund = useCallback((fund: Omit<SinkingFund, 'id' | 'currentAmount'>) => {
+    if (!sinkingFundsColRef) return;
+    addDocumentNonBlocking(sinkingFundsColRef, { ...fund, currentAmount: 0 });
+  }, [sinkingFundsColRef]);
+
+  const updateSinkingFund = useCallback((fund: SinkingFund) => {
+    if (!sinkingFundsColRef) return;
+    const { id, ...data } = fund;
+    const docRef = doc(sinkingFundsColRef, id);
+    updateDocumentNonBlocking(docRef, data);
+  }, [sinkingFundsColRef]);
+
+  const deleteSinkingFund = useCallback((id: string) => {
+    if (!sinkingFundsColRef) return;
+    const docRef = doc(sinkingFundsColRef, id);
+    deleteDocumentNonBlocking(docRef);
+  }, [sinkingFundsColRef]);
+  
+  const allocateToSinkingFund = useCallback((id: string, amount: number) => {
+      if (!firestore || !sinkingFundsColRef || !sinkingFunds) return;
+      const fund = sinkingFunds.find(f => f.id === id);
+      if (fund) {
+          const newCurrentAmount = (fund.currentAmount || 0) + amount;
+          const docRef = doc(sinkingFundsColRef, id);
+          updateDocumentNonBlocking(docRef, { currentAmount: newCurrentAmount });
+      }
+  }, [firestore, sinkingFundsColRef, sinkingFunds]);
+
 
   const totalSpent = useMemo(
     () => (expenses ?? []).filter(e => {
@@ -211,11 +250,15 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const totalSavingsBudget = useMemo(() => {
     return (budgets ?? []).find(b => b.categoryId === 'savings')?.amount ?? 0;
   }, [budgets]);
+  
+  const totalSinkingFundsAllocated = useMemo(() => {
+    return (sinkingFunds ?? []).reduce((sum, fund) => sum + fund.currentAmount, 0);
+  }, [sinkingFunds]);
 
 
   const remainingBalance = useMemo(
-    () => allowance - totalSpent - totalSavingsBudget,
-    [allowance, totalSpent, totalSavingsBudget]
+    () => allowance - totalSpent - totalSavingsBudget - totalSinkingFundsAllocated,
+    [allowance, totalSpent, totalSavingsBudget, totalSinkingFundsAllocated]
   );
 
   const dailyAverage = useMemo(() => {
@@ -295,6 +338,11 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     setBudgets,
     budgetTarget,
     setBudgetTarget,
+    sinkingFunds: sinkingFunds ?? [],
+    addSinkingFund,
+    updateSinkingFund,
+    deleteSinkingFund,
+    allocateToSinkingFund,
     totalSpent,
     remainingBalance,
     dailyAverage,

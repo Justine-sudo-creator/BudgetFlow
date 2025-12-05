@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useBudget } from "@/hooks/use-budget";
@@ -29,7 +30,7 @@ const typeVariant: Record<CategoryType, "default" | "secondary" | "outline"> = {
 }
 
 export function CategoryBudgets() {
-  const { allowance, categories, budgets, setBudgets, getSpentForCategory, expenses, isLoading, remainingBalance } = useBudget();
+  const { allowance, categories, budgets, setBudgets, getSpentForCategory, expenses, isLoading, remainingBalance, sinkingFunds } = useBudget();
   const [localPercentages, setLocalPercentages] = useState<Record<string, number>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,6 +48,8 @@ export function CategoryBudgets() {
 
 
   const spendCategories = useMemo(() => categories.filter(c => c.type !== 'savings'), [categories]);
+  const savingsBudgetAmount = useMemo(() => budgets.find(b => b.categoryId === 'savings')?.amount ?? 0, [budgets]);
+
 
   useEffect(() => {
     if (!isLoading && budgets && !hasInitialized) {
@@ -92,6 +95,12 @@ export function CategoryBudgets() {
             };
         });
     
+    // Make sure savings budget is preserved
+    const savingsBudget = budgets.find(b => b.categoryId === 'savings');
+    if (savingsBudget) {
+        newBudgetsToSave.push({ categoryId: 'savings', amount: savingsBudget.amount });
+    }
+
     try {
       await setBudgets(newBudgetsToSave);
       toast({ title: "Budgets Saved", description: "Your category budgets have been updated." });
@@ -140,6 +149,8 @@ export function CategoryBudgets() {
         const result = await getBudgetAllocation({
             allowance,
             remainingBalance,
+            savingsAmount: savingsBudgetAmount,
+            sinkingFunds: sinkingFunds || [],
             categorySpending,
             recentExpenses,
             userContext: userContext || undefined
@@ -167,6 +178,10 @@ export function CategoryBudgets() {
   const totalAllocatedPercentage = useMemo(() => {
     return Object.values(localPercentages).reduce((total, p) => total + (p || 0), 0);
   }, [localPercentages]);
+
+  const totalAllocatedAmount = useMemo(() => {
+    return (totalAllocatedPercentage / 100) * remainingBalance;
+  }, [totalAllocatedPercentage, remainingBalance]);
 
   if (isLoading && !hasInitialized) {
     return (
@@ -226,9 +241,14 @@ export function CategoryBudgets() {
           <div className="p-4 bg-muted rounded-lg text-center sticky top-0 z-10">
               <p className="text-sm text-muted-foreground">Plan your budget from your remaining balance.</p>
               <p className="text-lg font-bold">{currencyFormatter.format(remainingBalance)}</p>
-              <p className={`text-sm font-semibold ${totalAllocatedPercentage > 100 ? 'text-destructive' : 'text-primary'}`}>
-                  {Math.round(totalAllocatedPercentage)}% Allocated
-              </p>
+              <div className="flex justify-center items-baseline gap-2">
+                <p className={`text-sm font-semibold ${totalAllocatedPercentage > 100 ? 'text-destructive' : 'text-primary'}`}>
+                    {Math.round(totalAllocatedPercentage)}% Allocated
+                </p>
+                <p className="text-xs text-muted-foreground">
+                    ({currencyFormatter.format(totalAllocatedAmount)})
+                </p>
+              </div>
           </div>
           {spendCategories.map(category => {
               const spent = getSpentForCategory(category.id);
@@ -271,11 +291,6 @@ export function CategoryBudgets() {
                   </div>
               )
           })}
-      </div>
-      <div className="flex justify-end pt-8">
-          <Button onClick={handleSaveBudgets} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Budgets"}
-          </Button>
       </div>
     </>
   );

@@ -136,6 +136,17 @@ service cloud.firestore {
     match /users/{userId}/income/{incomeId} {
       allow read, write: if isOwner(userId);
     }
+    
+    /**
+     * @description Manages user-defined savings goals (sinking funds).
+     * @path /users/{userId}/sinkingFunds/{sinkingFundId}
+     * @allow A user (uid: 'user123') (list) their sinking funds at `/users/user123/sinkingFunds`.
+     * @deny A different user (uid: 'user456') (delete) a fund at `/users/user123/sinkingFunds/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/sinkingFunds/{sinkingFundId} {
+      allow read, write: if isOwner(userId);
+    }
 
     /**
      * @description Manages a user's custom category allocations.

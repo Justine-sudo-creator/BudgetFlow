@@ -132,6 +132,30 @@
           ]
         }
       }
+    },
+    "SinkingFund": {
+      "title": "Sinking Fund",
+      "type": "object",
+      "description": "Represents a user-defined savings goal.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the sinking fund (e.g., 'New Laptop')."
+        },
+        "targetAmount": {
+          "type": "number",
+          "description": "The total amount the user wants to save for this fund."
+        },
+        "currentAmount": {
+          "type": "number",
+          "description": "The amount currently saved in this fund."
+        }
+      },
+      "required": [
+        "name",
+        "targetAmount",
+        "currentAmount"
+      ]
     }
   },
   "auth": {
@@ -170,6 +194,12 @@
         "$ref": "#/entities/Category"
       },
       "description": "Stores global, pre-defined expense categories."
+    },
+    "/users/{userId}/sinkingFunds/{sinkingFundId}": {
+      "schema": {
+        "$ref": "#/entities/SinkingFund"
+      },
+      "description": "Stores user-defined savings goals (sinking funds)."
     }
   }
 }
