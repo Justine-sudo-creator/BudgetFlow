@@ -1,0 +1,16 @@
+{
+  "name": "BudgetFlow",
+  "short_name": "BudgetFlow",
+  "description": "Track your allowance and expenses with ease.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F9FAF8",
+  "theme_color": "#1C2520",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
