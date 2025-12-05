@@ -30,7 +30,7 @@ const typeVariant: Record<CategoryType, "default" | "secondary" | "outline"> = {
 }
 
 export function CategoryBudgets() {
-  const { allowance, categories, budgets, getSpentForCategory, expenses, isLoading, remainingBalance, sinkingFunds } = useBudget();
+  const { allowance, categories, budgets, getSpentForCategory, expenses, isLoading, remainingBalance, sinkingFunds, setBudgets } = useBudget();
   const [localPercentages, setLocalPercentages] = useState<Record<string, number>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -194,6 +194,7 @@ export function CategoryBudgets() {
               const percentage = localPercentages[category.id] ?? 0;
               const allocatedFromRemaining = (percentage / 100) * remainingBalance;
               const totalBudgetForCategory = spent + allocatedFromRemaining;
+              const leftToSpend = totalBudgetForCategory - spent;
               const progress = totalBudgetForCategory > 0 ? (spent / totalBudgetForCategory) * 100 : 0;
 
 
@@ -224,6 +225,7 @@ export function CategoryBudgets() {
                           <Progress value={progress} className="h-2" />
                           <div className="flex justify-between text-xs text-muted-foreground">
                             <span>{currencyFormatter.format(spent)} spent</span>
+                            <span className="font-semibold text-foreground">{currencyFormatter.format(leftToSpend)} left</span>
                             <span>{currencyFormatter.format(totalBudgetForCategory)} total</span>
                           </div>
                       </div>
