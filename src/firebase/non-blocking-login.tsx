@@ -10,7 +10,7 @@ import {
   // Assume getAuth and app are initialized elsewhere
 } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { initializeFirebase } from '.';
+import { initializeFirebase } from './initializer';
 
 type ErrorCallback = (error: FirebaseError) => void;
 
