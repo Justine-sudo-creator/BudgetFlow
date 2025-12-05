@@ -1,15 +1,12 @@
-
 "use client";
 
 import { useBudget } from "@/hooks/use-budget";
 import { Input } from "../ui/input";
-import { Progress } from "../ui/progress";
 import { Label } from "../ui/label";
 import { Button } from "../ui/button";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { Budget, CategoryType, Category } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Sparkles } from "lucide-react";
 import { getBudgetAllocation } from "@/ai/flows/budget-allocation-flow";
@@ -18,6 +15,7 @@ import { Badge } from "../ui/badge";
 import { MarkdownContent } from "../insights/markdown-content";
 import { subDays, parseISO, format } from "date-fns";
 import { Textarea } from "../ui/textarea";
+import { Progress } from "../ui/progress";
 
 const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -31,119 +29,82 @@ const typeVariant: Record<CategoryType, "default" | "secondary" | "outline"> = {
 }
 
 export function CategoryBudgets() {
-  const { allowance, categories, budgets, setBudgets, getSpentForCategory, getCategoryById, expenses, isLoading, remainingBalance } = useBudget();
-  const [localBudgets, setLocalBudgets] = useState<Record<string, string>>({});
-  const [localPercentages, setLocalPercentages] = useState<Record<string, string>>({});
+  const { allowance, categories, budgets, setBudgets, getSpentForCategory, expenses, isLoading, remainingBalance } = useBudget();
+  const [localPercentages, setLocalPercentages] = useState<Record<string, number>>({});
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [userContext, setUserContext] = useState("");
-  const [isDirty, setIsDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState("amount");
+  const [hasInitialized, setHasInitialized] = useState(false);
+
   const { toast } = useToast();
+  
+  const stableRemainingBalance = useRef(remainingBalance);
 
   useEffect(() => {
-    if (isLoading) return;
+    stableRemainingBalance.current = remainingBalance;
+  }, [remainingBalance]);
 
-    const initialBudgets: Record<string, string> = {};
-    const initialPercentages: Record<string, string> = {};
-    
-    categories.forEach(category => {
+
+  const spendCategories = useMemo(() => categories.filter(c => c.type !== 'savings'), [categories]);
+
+  useEffect(() => {
+    if (!isLoading && budgets && !hasInitialized) {
+      const initialPercentages: Record<string, number> = {};
+      const balance = stableRemainingBalance.current;
+      spendCategories.forEach(category => {
         const budget = budgets.find(b => b.categoryId === category.id);
-        const spent = getSpentForCategory(category.id);
         const budgetAmount = budget?.amount ?? 0;
-        
-        initialBudgets[category.id] = String(budgetAmount.toFixed(2));
-
-        if (remainingBalance > 0) {
-            const currentBudgetedAmount = budget?.amount ?? 0;
-            const portionOfRemaining = Math.max(0, currentBudgetedAmount - spent);
-            const percentage = (portionOfRemaining / remainingBalance) * 100;
-             initialPercentages[category.id] = percentage > 0 ? percentage.toFixed(0) : '0';
-        } else {
-            initialPercentages[category.id] = '0';
-        }
-    });
-
-    const totalInitialPercentage = Object.values(initialPercentages).reduce((sum, val) => sum + parseFloat(val || '0'), 0);
-    if (totalInitialPercentage > 0 && totalInitialPercentage !== 100) {
-        const factor = 100 / totalInitialPercentage;
-        Object.keys(initialPercentages).forEach(key => {
-            initialPercentages[key] = (parseFloat(initialPercentages[key] || '0') * factor).toFixed(0);
-        });
-        let finalTotal = Object.values(initialPercentages).reduce((sum, val) => sum + parseFloat(val || '0'), 0);
-        if (finalTotal !== 100) {
-             const diff = 100 - finalTotal;
-             if (Object.keys(initialPercentages).length > 0) {
-                const largestKey = Object.keys(initialPercentages).reduce((a, b) => parseFloat(initialPercentages[a] || '0') > parseFloat(initialPercentages[b] || '0') ? a : b);
-                initialPercentages[largestKey] = (parseFloat(initialPercentages[largestKey] || '0') + diff).toFixed(0);
-             }
-        }
+        const spent = getSpentForCategory(category.id);
+        const allocatedFromRemaining = budgetAmount > spent ? budgetAmount - spent : 0;
+        const percentage = balance > 0 
+          ? Math.round((allocatedFromRemaining / balance) * 100)
+          : 0;
+        initialPercentages[category.id] = percentage;
+      });
+      setLocalPercentages(initialPercentages);
+      setHasInitialized(true);
     }
+  }, [isLoading, budgets, spendCategories, getSpentForCategory, hasInitialized]);
 
 
-    setLocalBudgets(initialBudgets);
-    setLocalPercentages(initialPercentages);
-    setIsDirty(false);
-  }, [budgets, allowance, categories, getSpentForCategory, isLoading, remainingBalance]);
-
-
-  const totalPercentage = useMemo(() => {
-      return Object.values(localPercentages).reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
-  }, [localPercentages]);
-  
-  if (isLoading) {
-    return (
-        <div className="space-y-8">
-            {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse bg-muted p-4 rounded-lg space-y-2">
-                    <div className="h-5 w-1/4 bg-muted-foreground/20 rounded" />
-                    <div className="h-8 w-full bg-muted-foreground/20 rounded" />
-                    <div className="h-4 w-1/2 bg-muted-foreground/20 rounded" />
-                </div>
-            ))}
-        </div>
-    );
-  }
-
-  const handleAmountBudgetChange = (categoryId: string, value: string) => {
-    setLocalBudgets(prev => ({...prev, [categoryId]: value}));
-    setIsDirty(true);
+  const handlePercentageChange = (categoryId: string, percentageStr: string) => {
+    const percentage = parseFloat(percentageStr);
+    if (isNaN(percentage)) {
+      setLocalPercentages(prev => ({ ...prev, [categoryId]: 0 }));
+    } else {
+      setLocalPercentages(prev => ({ ...prev, [categoryId]: Math.max(0, Math.min(100, percentage)) }));
+    }
   };
   
-  const handlePercentageBudgetChange = (categoryId: string, value: string) => {
-    setLocalPercentages(prev => ({...prev, [categoryId]: value}));
-    setIsDirty(true);
-  };
-
-  const handleSaveBudgets = () => {
-    let newBudgets: Budget[];
-
-    if (activeTab === 'percentage') {
-        if (totalPercentage !== 100) {
-            toast({ variant: "destructive", title: "Allocation must be 100%", description: "Please ensure your budget percentages add up to exactly 100." });
-            return;
-        }
-        newBudgets = categories.map(category => {
-            const percentage = parseFloat(localPercentages[category.id]) || 0;
-            const alreadySpent = getSpentForCategory(category.id);
-            const newAllocation = (remainingBalance * percentage) / 100;
+  const handleSaveBudgets = async () => {
+    setIsSaving(true);
+    const balanceForCalc = stableRemainingBalance.current;
+    
+    const newBudgetsToSave: Omit<Budget, 'id'>[] = Object.entries(localPercentages)
+        .map(([categoryId, percentage]) => {
+            const spent = getSpentForCategory(categoryId);
+            const allocatedFromRemaining = (percentage / 100) * balanceForCalc;
+            const newTotalBudget = spent + allocatedFromRemaining;
             return {
-                categoryId: category.id,
-                amount: alreadySpent + newAllocation
+                categoryId,
+                amount: newTotalBudget >= 0 ? newTotalBudget : 0,
             };
         });
-    } else {
-        newBudgets = Object.entries(localBudgets)
-        .map(([categoryId, amountStr]) => ({
-            categoryId,
-            amount: parseFloat(amountStr) || 0,
-        }));
+    
+    try {
+      await setBudgets(newBudgetsToSave);
+      toast({ title: "Budgets Saved", description: "Your category budgets have been updated." });
+    } catch (error) {
+       toast({ variant: "destructive", title: "Save Failed", description: "Could not save your budgets. Please try again." });
+    } finally {
+      setIsSaving(false);
     }
-
-    setBudgets(newBudgets.filter(b => b.amount >= 0));
-    setIsDirty(false);
-    toast({ title: "Budgets Saved", description: "Your category budgets have been updated." });
   };
+  
+  const getCategoryById = (id: string): Category | undefined => {
+    return categories.find(c => c.id === id);
+  }
   
   const handleGetBudgetAllocation = async () => {
     if (allowance <= 0) {
@@ -170,7 +131,7 @@ export function CategoryBudgets() {
                 }
             });
 
-        const categorySpending = categories.map(c => ({
+        const categorySpending = spendCategories.map(c => ({
             name: c.name,
             type: c.type,
             spent: getSpentForCategory(c.id),
@@ -203,10 +164,22 @@ export function CategoryBudgets() {
     }
   };
 
-  const isSaveDisabled = () => {
-    if (!isDirty) return true;
-    if (activeTab === 'percentage' && totalPercentage !== 100) return true;
-    return false;
+  const totalAllocatedPercentage = useMemo(() => {
+    return Object.values(localPercentages).reduce((total, p) => total + (p || 0), 0);
+  }, [localPercentages]);
+
+  if (isLoading && !hasInitialized) {
+    return (
+        <div className="space-y-8">
+            {[...Array(5)].map((_, i) => (
+                <div key={i} className="animate-pulse bg-muted p-4 rounded-lg space-y-2">
+                    <div className="h-5 w-1/4 bg-muted-foreground/20 rounded" />
+                    <div className="h-8 w-full bg-muted-foreground/20 rounded" />
+                    <div className="h-4 w-1/2 bg-muted-foreground/20 rounded" />
+                </div>
+            ))}
+        </div>
+    );
   }
 
   return (
@@ -214,7 +187,7 @@ export function CategoryBudgets() {
       <Card className="mb-6">
           <CardHeader>
               <CardTitle>AI Budget Planner</CardTitle>
-              <CardDescription>Let AI create a balanced budget based on your spending and current context.</CardDescription>
+              <CardDescription>Let AI create a balanced budget for your remaining funds based on your spending and current context.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div>
@@ -249,96 +222,59 @@ export function CategoryBudgets() {
           </CardContent>
       </Card>
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="amount">Amount</TabsTrigger>
-              <TabsTrigger value="percentage">Percentage</TabsTrigger>
-          </TabsList>
-          <TabsContent value="amount" className="pt-4">
-            <div className="space-y-4">
-              {categories.map((category) => {
-                  const spent = getSpentForCategory(category.id);
-                  const budgetAmount = parseFloat(localBudgets[category.id]) || 0;
-                  const progress = budgetAmount > 0 ? (spent / budgetAmount) * 100 : 0;
-                  const remaining = budgetAmount - spent;
+      <div className="space-y-8 mt-6">
+          <div className="p-4 bg-muted rounded-lg text-center sticky top-0 z-10">
+              <p className="text-sm text-muted-foreground">Plan your budget from your remaining balance.</p>
+              <p className="text-lg font-bold">{currencyFormatter.format(remainingBalance)}</p>
+              <p className={`text-sm font-semibold ${totalAllocatedPercentage > 100 ? 'text-destructive' : 'text-primary'}`}>
+                  {Math.round(totalAllocatedPercentage)}% Allocated
+              </p>
+          </div>
+          {spendCategories.map(category => {
+              const spent = getSpentForCategory(category.id);
+              const percentage = localPercentages[category.id] ?? 0;
+              const allocatedFromRemaining = (percentage / 100) * remainingBalance;
+              const totalBudgetForCategory = spent + allocatedFromRemaining;
+              const progress = totalBudgetForCategory > 0 ? (spent / totalBudgetForCategory) * 100 : 0;
 
-                  return (
-                  <div key={category.id} className="space-y-2">
-                      <div className="flex items-center gap-4">
-                          <Label htmlFor={`budget-amount-${category.id}`} className="flex items-center gap-2 text-base flex-1">
-                              <category.icon className="w-5 h-5 text-muted-foreground" />
-                              {category.name}
+
+              return (
+                  <div key={category.id}>
+                      <div className="flex items-center justify-between mb-2">
+                          <Label htmlFor={`budget-percentage-${category.id}`} className="flex items-center gap-2 text-base">
+                          <category.icon className="w-5 h-5 text-muted-foreground" />
+                          {category.name}
                           </Label>
-                          <Input
-                              id={`budget-amount-${category.id}`}
-                              type="number"
-                              step="10"
-                              placeholder="Set budget"
-                              value={localBudgets[category.id] ?? ''}
-                              onChange={(e) => handleAmountBudgetChange(category.id, e.target.value)}
-                              className="w-32 text-right"
-                          />
+                          <Badge variant={typeVariant[category.type]} className="capitalize text-xs h-5">{category.type}</Badge>
                       </div>
-                      {budgetAmount > 0 && (
-                          <div className="pl-9">
-                              <Progress value={progress > 100 ? 100 : progress} className="h-2" />
-                              <p className={`text-xs mt-1 font-medium ${remaining < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                  {currencyFormatter.format(spent)} spent / {currencyFormatter.format(Math.abs(remaining))} {remaining >= 0 ? 'left' : 'over'}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                  Your budget of {currencyFormatter.format(budgetAmount)} is made of {currencyFormatter.format(spent)} spent and {currencyFormatter.format(remaining > 0 ? remaining : 0)} remaining.
-                              </p>
+                      <div className="flex items-center gap-4">
+                          <Input
+                              id={`budget-percentage-${category.id}`}
+                              type="number"
+                              placeholder="0"
+                              value={percentage.toString()}
+                              onChange={(e) => handlePercentageChange(category.id, e.target.value)}
+                              className="w-24"
+                          />
+                          <span className="text-lg font-semibold">%</span>
+                          <span className="text-sm text-muted-foreground">
+                              = {currencyFormatter.format(allocatedFromRemaining)}
+                          </span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                          <Progress value={progress} className="h-2" />
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>{currencyFormatter.format(spent)} spent</span>
+                            <span>{currencyFormatter.format(totalBudgetForCategory)} total</span>
                           </div>
-                      )}
+                      </div>
                   </div>
-                  );
-              })}
-            </div>
-        </TabsContent>
-        <TabsContent value="percentage" className="pt-4">
-            <div className="space-y-8">
-                <div className="p-4 bg-muted rounded-lg text-center">
-                    <p className="text-sm text-muted-foreground">Allocate percentages of your remaining balance.</p>
-                    <p className="text-lg font-bold">{currencyFormatter.format(remainingBalance)}</p>
-                    <p className={`text-sm font-semibold ${totalPercentage !== 100 ? 'text-destructive' : 'text-primary'}`}>
-                        {totalPercentage}% Allocated (Must be 100%)
-                    </p>
-                </div>
-                {categories.map(category => {
-                    const percentage = parseFloat(localPercentages[category.id]) || 0;
-                    const calculatedAmount = (remainingBalance * percentage) / 100;
-                    return (
-                        <div key={category.id}>
-                            <div className="flex items-center justify-between mb-2">
-                                <Label htmlFor={`budget-percentage-${category.id}`} className="flex items-center gap-2 text-base">
-                                <category.icon className="w-5 h-5 text-muted-foreground" />
-                                {category.name}
-                                </Label>
-                                <Badge variant={typeVariant[category.type]} className="capitalize text-xs h-5">{category.type}</Badge>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <Input
-                                    id={`budget-percentage-${category.id}`}
-                                    type="number"
-                                    placeholder="0"
-                                    value={localPercentages[category.id] ?? ''}
-                                    onChange={e => handlePercentageBudgetChange(category.id, e.target.value)}
-                                    className="w-24"
-                                />
-                                <span className="text-lg font-semibold">%</span>
-                                <span className="text-sm text-muted-foreground">
-                                    = {currencyFormatter.format(calculatedAmount)}
-                                </span>
-                            </div>
-                        </div>
-                    )
-                })}
-            </div>
-        </TabsContent>
-      </Tabs>
+              )
+          })}
+      </div>
       <div className="flex justify-end pt-8">
-          <Button onClick={handleSaveBudgets} disabled={isSaveDisabled()}>
-              Save Budgets
+          <Button onClick={handleSaveBudgets} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Budgets"}
           </Button>
       </div>
     </>

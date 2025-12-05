@@ -78,8 +78,14 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const { data: userData, isLoading: userLoading } = useDoc<any>(userDocRef);
   const { data: expenses, isLoading: expensesLoading } = useCollection<Expense>(expensesColRef);
   const { data: income, isLoading: incomeLoading } = useCollection<Income>(incomeColRef);
-  const { data: budgets, isLoading: budgetsLoading } = useCollection<Budget>(budgetsColRef);
+  const { data: budgetsFromHook, isLoading: budgetsLoading } = useCollection<Budget>(budgetsColRef);
   
+  const budgets = useMemo(() => {
+    if (!budgetsFromHook) return [];
+    // The document ID from firestore is the categoryId
+    return budgetsFromHook.map(b => ({ ...b, categoryId: (b as any).id }));
+  }, [budgetsFromHook]);
+
   const allowance = userData?.allowance ?? 0;
   const budgetTarget = userData?.budgetTarget ?? { amount: 0, period: 'daily' };
 
@@ -184,48 +190,44 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
       if (!firestore || !budgetsColRef) return;
       const batch = writeBatch(firestore);
 
-      // First, delete all existing budgets for the user
-      budgets?.forEach(oldBudget => {
-        const docRef = doc(budgetsColRef, oldBudget.categoryId); // Assuming categoryId is the doc id
-        batch.delete(docRef);
-      });
-
-      // Then, add the new budgets
       newBudgets.forEach(b => {
-          const docRef = doc(budgetsColRef, b.categoryId); // Use categoryId as the document ID
+          const docRef = doc(budgetsColRef, b.categoryId);
           batch.set(docRef, { amount: b.amount });
       });
 
       batch.commit().catch(error => console.error("Set budgets failed:", error));
-  }, [firestore, budgetsColRef, budgets]);
+  }, [firestore, budgetsColRef]);
 
-
-  const savingsBudget = useMemo(() => {
-    const savingsCategory = categories.find(c => c.type === 'savings');
-    if (!savingsCategory || !budgets) return 0;
-    return budgets.find(b => b.categoryId === savingsCategory.id)?.amount ?? 0;
-  }, [budgets, categories]);
 
   const totalSpent = useMemo(
-    () => (expenses ?? []).reduce((sum, e) => sum + e.amount, 0),
-    [expenses]
+    () => (expenses ?? []).filter(e => {
+        const category = categories.find(c => c.id === e.categoryId);
+        return category?.type !== 'savings';
+    }).reduce((sum, e) => sum + e.amount, 0),
+    [expenses, categories]
   );
 
   const remainingBalance = useMemo(
-    () => allowance - totalSpent - savingsBudget,
-    [allowance, totalSpent, savingsBudget]
+    () => allowance - totalSpent,
+    [allowance, totalSpent]
   );
 
   const dailyAverage = useMemo(() => {
     if (!expenses || expenses.length === 0) return 0;
-    const firstExpenseDate = expenses.reduce((earliest, e) => {
+    const spendingExpenses = expenses.filter(e => {
+        const category = categories.find(c => c.id === e.categoryId);
+        return category?.type !== 'savings';
+    });
+    if (spendingExpenses.length === 0) return 0;
+
+    const firstExpenseDate = spendingExpenses.reduce((earliest, e) => {
       const eDate = parseISO(e.date);
       return eDate < earliest ? eDate : earliest;
     }, new Date());
 
     const days = differenceInDays(new Date(), firstExpenseDate) + 1;
     return totalSpent / days;
-  }, [expenses, totalSpent]);
+  }, [expenses, totalSpent, categories]);
 
   const survivalDays = useMemo(() => {
     if (remainingBalance <= 0) return 0;
@@ -283,7 +285,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     addIncome,
     deleteIncomes,
     categories,
-    budgets: (budgets ?? []).map(b => ({...b, categoryId: (b as any).id })), // Map Firestore doc ID to categoryId
+    budgets: budgets ?? [],
     setBudgets,
     budgetTarget,
     setBudgetTarget,
