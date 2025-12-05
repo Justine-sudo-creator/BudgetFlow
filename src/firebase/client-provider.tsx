@@ -12,7 +12,8 @@ interface FirebaseClientProviderProps {
 }
 
 // This function ensures that Firebase is initialized only once.
-function getFirebaseServices() {
+// We keep it separate to allow it to be exported and used in other client files.
+export function initializeFirebase() {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   return {
     firebaseApp: app,
@@ -22,8 +23,8 @@ function getFirebaseServices() {
 }
 
 export function FirebaseClientProvider({ children }: FirebaseClientProviderProps) {
-  // useMemo ensures that getFirebaseServices is called only once per component mount.
-  const { firebaseApp, auth, firestore } = useMemo(getFirebaseServices, []);
+  // useMemo ensures that initializeFirebase is called only once per component mount.
+  const { firebaseApp, auth, firestore } = useMemo(initializeFirebase, []);
 
   return (
     <FirebaseProvider

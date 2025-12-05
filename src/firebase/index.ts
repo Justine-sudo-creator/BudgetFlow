@@ -4,7 +4,6 @@
 // This file is a "barrel" file, which means it only re-exports modules from other files.
 // This is a common pattern in large applications to simplify imports.
 
-export * from './initializer';
 export * from './provider';
 export * from './client-provider';
 export * from './firestore/use-collection';

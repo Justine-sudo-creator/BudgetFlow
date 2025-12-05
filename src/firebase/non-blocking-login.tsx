@@ -10,11 +10,11 @@ import {
   // Assume getAuth and app are initialized elsewhere
 } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { initializeFirebase } from './initializer';
+import { initializeFirebase } from './client-provider';
 
 type ErrorCallback = (error: FirebaseError) => void;
 
-const createNewUserDocument = (userCredential: UserCredential) => {
+const createNewUserDocument = (userCredential: UserCredential): Promise<void> => {
     const { firestore } = initializeFirebase();
     const user = userCredential.user;
     if (firestore && user) {
@@ -51,5 +51,6 @@ export function initiateEmailSignUp(authInstance: Auth, email: string, password:
 export function initiateEmailSignIn(authInstance: Auth, email: string, password: string, onError: ErrorCallback): Promise<void> {
   // CRITICAL: Call signInWithEmailAndPassword directly. Do NOT use 'await signInWithEmailAndPassword(...)'.
   return signInWithEmailAndPassword(authInstance, email, password)
+    .then(() => {}) // Ensure the promise chain resolves to void
     .catch(onError);
 }
