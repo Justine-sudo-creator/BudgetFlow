@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, {
@@ -36,7 +37,7 @@ interface BudgetContextType {
   deleteIncomes: (ids: string[]) => void;
   categories: Category[];
   budgets: Budget[];
-  setBudgets: (budgets: Budget[]) => void;
+  setBudgets: (budgets: Budget[]) => Promise<void>;
   budgetTarget: BudgetTarget;
   setBudgetTarget: (target: BudgetTarget) => void;
   totalSpent: number;
@@ -187,7 +188,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   );
   
   const setBudgets = useCallback((newBudgets: Budget[]) => {
-      if (!firestore || !budgetsColRef) return;
+      if (!firestore || !budgetsColRef) return Promise.reject("Firestore not ready");
       const batch = writeBatch(firestore);
 
       newBudgets.forEach(b => {
@@ -195,7 +196,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
           batch.set(docRef, { amount: b.amount });
       });
 
-      batch.commit().catch(error => console.error("Set budgets failed:", error));
+      return batch.commit(); // Return the promise from batch.commit()
   }, [firestore, budgetsColRef]);
 
 
@@ -206,10 +207,15 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     }).reduce((sum, e) => sum + e.amount, 0),
     [expenses, categories]
   );
+  
+  const totalSavingsBudget = useMemo(() => {
+    return (budgets ?? []).find(b => b.categoryId === 'savings')?.amount ?? 0;
+  }, [budgets]);
+
 
   const remainingBalance = useMemo(
-    () => allowance - totalSpent,
-    [allowance, totalSpent]
+    () => allowance - totalSpent - totalSavingsBudget,
+    [allowance, totalSpent, totalSavingsBudget]
   );
 
   const dailyAverage = useMemo(() => {
