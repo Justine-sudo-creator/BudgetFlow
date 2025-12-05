@@ -30,46 +30,16 @@ const typeVariant: Record<CategoryType, "default" | "secondary" | "outline"> = {
 }
 
 export function CategoryBudgets() {
-  const { allowance, categories, budgets, setBudgets, getSpentForCategory, expenses, isLoading, remainingBalance, sinkingFunds } = useBudget();
+  const { allowance, categories, budgets, getSpentForCategory, expenses, isLoading, remainingBalance, sinkingFunds } = useBudget();
   const [localPercentages, setLocalPercentages] = useState<Record<string, number>>({});
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [userContext, setUserContext] = useState("");
-  const [hasInitialized, setHasInitialized] = useState(false);
-
-  const { toast } = useToast();
   
-  const stableRemainingBalance = useRef(remainingBalance);
-
-  useEffect(() => {
-    stableRemainingBalance.current = remainingBalance;
-  }, [remainingBalance]);
-
+  const { toast } = useToast();
 
   const spendCategories = useMemo(() => categories.filter(c => c.type !== 'savings'), [categories]);
   const savingsBudgetAmount = useMemo(() => budgets.find(b => b.categoryId === 'savings')?.amount ?? 0, [budgets]);
-
-
-  useEffect(() => {
-    if (!isLoading && budgets && !hasInitialized) {
-      const initialPercentages: Record<string, number> = {};
-      const balance = stableRemainingBalance.current;
-      spendCategories.forEach(category => {
-        const budget = budgets.find(b => b.categoryId === category.id);
-        const budgetAmount = budget?.amount ?? 0;
-        const spent = getSpentForCategory(category.id);
-        const allocatedFromRemaining = budgetAmount > spent ? budgetAmount - spent : 0;
-        const percentage = balance > 0 
-          ? Math.round((allocatedFromRemaining / balance) * 100)
-          : 0;
-        initialPercentages[category.id] = percentage;
-      });
-      setLocalPercentages(initialPercentages);
-      setHasInitialized(true);
-    }
-  }, [isLoading, budgets, spendCategories, getSpentForCategory, hasInitialized]);
-
 
   const handlePercentageChange = (categoryId: string, percentageStr: string) => {
     const percentage = parseFloat(percentageStr);
@@ -77,37 +47,6 @@ export function CategoryBudgets() {
       setLocalPercentages(prev => ({ ...prev, [categoryId]: 0 }));
     } else {
       setLocalPercentages(prev => ({ ...prev, [categoryId]: Math.max(0, Math.min(100, percentage)) }));
-    }
-  };
-  
-  const handleSaveBudgets = async () => {
-    setIsSaving(true);
-    const balanceForCalc = stableRemainingBalance.current;
-    
-    const newBudgetsToSave: Omit<Budget, 'id'>[] = Object.entries(localPercentages)
-        .map(([categoryId, percentage]) => {
-            const spent = getSpentForCategory(categoryId);
-            const allocatedFromRemaining = (percentage / 100) * balanceForCalc;
-            const newTotalBudget = spent + allocatedFromRemaining;
-            return {
-                categoryId,
-                amount: newTotalBudget >= 0 ? newTotalBudget : 0,
-            };
-        });
-    
-    // Make sure savings budget is preserved
-    const savingsBudget = budgets.find(b => b.categoryId === 'savings');
-    if (savingsBudget) {
-        newBudgetsToSave.push({ categoryId: 'savings', amount: savingsBudget.amount });
-    }
-
-    try {
-      await setBudgets(newBudgetsToSave);
-      toast({ title: "Budgets Saved", description: "Your category budgets have been updated." });
-    } catch (error) {
-       toast({ variant: "destructive", title: "Save Failed", description: "Could not save your budgets. Please try again." });
-    } finally {
-      setIsSaving(false);
     }
   };
   
@@ -183,7 +122,7 @@ export function CategoryBudgets() {
     return (totalAllocatedPercentage / 100) * remainingBalance;
   }, [totalAllocatedPercentage, remainingBalance]);
 
-  if (isLoading && !hasInitialized) {
+  if (isLoading) {
     return (
         <div className="space-y-8">
             {[...Array(5)].map((_, i) => (
@@ -272,7 +211,7 @@ export function CategoryBudgets() {
                               id={`budget-percentage-${category.id}`}
                               type="number"
                               placeholder="0"
-                              value={percentage.toString()}
+                              value={localPercentages[category.id] || ''}
                               onChange={(e) => handlePercentageChange(category.id, e.target.value)}
                               className="w-24"
                           />
@@ -295,4 +234,3 @@ export function CategoryBudgets() {
     </>
   );
 }
-    

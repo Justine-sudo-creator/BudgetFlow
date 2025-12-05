@@ -229,14 +229,19 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   }, [sinkingFundsColRef]);
   
   const allocateToSinkingFund = useCallback((id: string, amount: number) => {
-      if (!firestore || !sinkingFundsColRef || !sinkingFunds) return;
+      if (!firestore || !sinkingFundsColRef || !sinkingFunds || !userDocRef) return;
       const fund = sinkingFunds.find(f => f.id === id);
       if (fund) {
           const newCurrentAmount = (fund.currentAmount || 0) + amount;
-          const docRef = doc(sinkingFundsColRef, id);
-          updateDocumentNonBlocking(docRef, { currentAmount: newCurrentAmount });
+          const fundDocRef = doc(sinkingFundsColRef, id);
+          const newAllowance = allowance - amount;
+
+          const batch = writeBatch(firestore);
+          batch.update(fundDocRef, { currentAmount: newCurrentAmount });
+          batch.update(userDocRef, { allowance: newAllowance });
+          batch.commit();
       }
-  }, [firestore, sinkingFundsColRef, sinkingFunds]);
+  }, [firestore, sinkingFundsColRef, sinkingFunds, userDocRef, allowance]);
 
 
   const totalSpent = useMemo(
@@ -257,8 +262,8 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
 
 
   const remainingBalance = useMemo(
-    () => allowance - totalSpent - totalSavingsBudget - totalSinkingFundsAllocated,
-    [allowance, totalSpent, totalSavingsBudget, totalSinkingFundsAllocated]
+    () => allowance - totalSpent - totalSavingsBudget,
+    [allowance, totalSpent, totalSavingsBudget]
   );
 
   const dailyAverage = useMemo(() => {

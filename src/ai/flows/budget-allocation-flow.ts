@@ -25,7 +25,7 @@ Your main task is to create a realistic forward-looking spending plan for the us
     {{else}}
     - The user has **not set any savings yet**. Your first task is to suggest a reasonable savings amount based on their spending habits and remaining balance. After suggesting savings, allocate 100% of the *remaining* balance across the other categories.
     {{/if}}
-2.  **Work with Remaining Spendable Funds**: The budget you create must be based on the \`remainingBalance\` of **₱{{remainingBalance}}**.
+2.  **Work with Remaining Spendable Funds**: The budget you create must be based on the \`remainingBalance\` of **₱{{remainingBalance}}**. This amount is what's left after accounting for past spending, savings, and existing sinking funds.
 3.  **Prioritize Needs, Always**: Essential "Need" categories (like Food, Transport) MUST receive a portion of the remaining funds.
 4.  **Be Realistic about Wants**: Analyze spending habits from \`recentExpenses\`. If a "Want" category has high spending, suggest a lower or zero allocation from the remaining funds to prioritize needs.
 5.  **Include PHP Amounts**: For each category suggestion, you MUST include the percentage and the **calculated PHP amount** (e.g., 40% - ₱2,000). The total of your suggested PHP amounts must not exceed the \`remainingBalance\`.
