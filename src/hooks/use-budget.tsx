@@ -204,11 +204,21 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
 
       newBudgets.forEach(b => {
           const docRef = doc(budgetsColRef, b.categoryId);
-          batch.set(docRef, { amount: b.amount });
+          const dataToSet: Partial<Budget> = {
+              amount: b.amount,
+              percentage: b.percentage
+          };
+          batch.set(docRef, dataToSet, { merge: true });
       });
+      
+      const savingsBudget = budgets.find(b => b.categoryId === 'savings');
+      if (savingsBudget) {
+        const docRef = doc(budgetsColRef, 'savings');
+        batch.set(docRef, { amount: savingsBudget.amount }, { merge: true });
+      }
 
       return batch.commit(); // Return the promise from batch.commit()
-  }, [firestore, budgetsColRef]);
+  }, [firestore, budgetsColRef, budgets]);
 
   const addSinkingFund = useCallback((fund: Omit<SinkingFund, 'id' | 'currentAmount'>) => {
     if (!sinkingFundsColRef) return;
@@ -225,7 +235,12 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const deleteSinkingFund = useCallback((id: string) => {
     if (!firestore || !sinkingFundsColRef || !userDocRef || !sinkingFunds) return;
     const fundToDelete = sinkingFunds.find(f => f.id === id);
-    if (!fundToDelete) return;
+    if (!fundToDelete || fundToDelete.currentAmount === 0) {
+      // Just delete if there's no money in it
+      const fundDocRef = doc(sinkingFundsColRef, id);
+      deleteDocumentNonBlocking(fundDocRef);
+      return;
+    };
 
     const batch = writeBatch(firestore);
     const fundDocRef = doc(sinkingFundsColRef, id);
@@ -246,11 +261,13 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
       if (fund) {
           const newCurrentAmount = (fund.currentAmount || 0) + amount;
           const fundDocRef = doc(sinkingFundsColRef, id);
-          const newAllowance = allowance - amount;
-
+          
           const batch = writeBatch(firestore);
           batch.update(fundDocRef, { currentAmount: newCurrentAmount });
-          batch.update(userDocRef, { allowance: newAllowance });
+          // Note: The remainingBalance for allocation is now a derived value.
+          // Allocating to a sinking fund is essentially an "expense" from the spendable balance.
+          // This happens by increasing the `totalSinkingFundsAllocated` which in turn reduces `remainingBalance`.
+          // We don't need to touch the base `allowance` here anymore.
           batch.commit();
       }
   }, [firestore, sinkingFundsColRef, sinkingFunds, userDocRef, allowance]);

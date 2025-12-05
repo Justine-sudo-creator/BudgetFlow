@@ -27,6 +27,7 @@ export type Income = {
 export type Budget = {
   categoryId: string;
   amount: number;
+  percentage?: number;
 };
 
 export type BudgetTarget = {

@@ -9,7 +9,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import type { Budget, CategoryType, Category } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Save } from "lucide-react";
 import { getBudgetAllocation } from "@/ai/flows/budget-allocation-flow";
 import { Skeleton } from "../ui/skeleton";
 import { Badge } from "../ui/badge";
@@ -40,6 +40,19 @@ export function CategoryBudgets() {
 
   const spendCategories = useMemo(() => categories.filter(c => c.type !== 'savings'), [categories]);
   const savingsBudgetAmount = useMemo(() => budgets.find(b => b.categoryId === 'savings')?.amount ?? 0, [budgets]);
+  
+  useEffect(() => {
+    if (budgets.length > 0) {
+        const initialPercentages = budgets.reduce((acc, budget) => {
+            if (budget.percentage) {
+                acc[budget.categoryId] = budget.percentage;
+            }
+            return acc;
+        }, {} as Record<string, number>);
+        setLocalPercentages(initialPercentages);
+    }
+  }, [budgets]);
+
 
   const handlePercentageChange = (categoryId: string, percentageStr: string) => {
     const percentage = parseFloat(percentageStr);
@@ -54,6 +67,45 @@ export function CategoryBudgets() {
     return categories.find(c => c.id === id);
   }
   
+  const handleSavePlan = async () => {
+    if (totalAllocatedPercentage > 100) {
+        toast({
+            variant: "destructive",
+            title: "Overallocated!",
+            description: "Total allocated percentage cannot exceed 100%.",
+        });
+        return;
+    }
+    
+    const newBudgets: Budget[] = spendCategories.map(category => {
+        const percentage = localPercentages[category.id] || 0;
+        const allocatedFromRemaining = (percentage / 100) * remainingBalance;
+        const spent = getSpentForCategory(category.id);
+        const totalBudgetForCategory = spent + allocatedFromRemaining;
+        
+        return {
+            categoryId: category.id,
+            amount: totalBudgetForCategory,
+            percentage,
+        }
+    });
+
+    try {
+        await setBudgets(newBudgets);
+        toast({
+            title: "Budget Plan Saved!",
+            description: "Your new category percentage allocations have been saved.",
+        });
+    } catch(error) {
+        console.error("Failed to save budget plan", error);
+        toast({
+            variant: "destructive",
+            title: "Save Failed",
+            description: "Could not save your budget plan.",
+        });
+    }
+  };
+
   const handleGetBudgetAllocation = async () => {
     if (allowance <= 0) {
         toast({
@@ -232,6 +284,9 @@ export function CategoryBudgets() {
                   </div>
               )
           })}
+           <Button onClick={handleSavePlan} className="w-full">
+                <Save className="mr-2 h-4 w-4" /> Save Plan
+            </Button>
       </div>
     </>
   );

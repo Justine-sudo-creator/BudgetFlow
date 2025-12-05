@@ -84,6 +84,10 @@
         "amount": {
           "type": "number",
           "description": "The budget amount for the category."
+        },
+        "percentage": {
+          "type": "number",
+          "description": "The allocated percentage for this category from the remaining spendable balance."
         }
       },
       "required": [
