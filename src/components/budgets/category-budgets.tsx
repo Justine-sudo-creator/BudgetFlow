@@ -305,7 +305,6 @@ export function CategoryBudgets() {
                     </p>
                 </div>
                 {categories.map(category => {
-                    if (category.type === 'savings') return null;
                     const percentage = parseFloat(localPercentages[category.id]) || 0;
                     const calculatedAmount = (remainingBalance * percentage) / 100;
                     return (
