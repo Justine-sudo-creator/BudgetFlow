@@ -199,25 +199,23 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   );
   
   const setBudgets = useCallback((newBudgets: Budget[]) => {
-      if (!firestore || !budgetsColRef) return Promise.reject("Firestore not ready");
-      const batch = writeBatch(firestore);
+    if (!firestore || !budgetsColRef) return Promise.reject("Firestore not ready");
+    const batch = writeBatch(firestore);
+    
+    // Create a map of the existing budgets for quick lookup
+    const existingBudgetsMap = new Map(budgets.map(b => [b.categoryId, b]));
 
-      newBudgets.forEach(b => {
-          const docRef = doc(budgetsColRef, b.categoryId);
-          const dataToSet: Partial<Budget> = {
-              amount: b.amount,
-              percentage: b.percentage
-          };
-          batch.set(docRef, dataToSet, { merge: true });
-      });
-      
-      const savingsBudget = budgets.find(b => b.categoryId === 'savings');
-      if (savingsBudget) {
-        const docRef = doc(budgetsColRef, 'savings');
-        batch.set(docRef, { amount: savingsBudget.amount }, { merge: true });
+    newBudgets.forEach(b => {
+      const docRef = doc(budgetsColRef, b.categoryId);
+      const dataToSet: Partial<Budget> & { categoryId?: string } = { ...b };
+      delete dataToSet.categoryId; // Don't save categoryId in the document itself
+
+      if (Object.keys(dataToSet).length > 0) {
+        batch.set(docRef, dataToSet, { merge: true });
       }
-
-      return batch.commit(); // Return the promise from batch.commit()
+    });
+    
+    return batch.commit();
   }, [firestore, budgetsColRef, budgets]);
 
   const addSinkingFund = useCallback((fund: Omit<SinkingFund, 'id' | 'currentAmount'>) => {
@@ -233,27 +231,10 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   }, [sinkingFundsColRef]);
 
   const deleteSinkingFund = useCallback((id: string) => {
-    if (!firestore || !sinkingFundsColRef || !userDocRef || !sinkingFunds) return;
-    const fundToDelete = sinkingFunds.find(f => f.id === id);
-    if (!fundToDelete || fundToDelete.currentAmount === 0) {
-      // Just delete if there's no money in it
-      const fundDocRef = doc(sinkingFundsColRef, id);
-      deleteDocumentNonBlocking(fundDocRef);
-      return;
-    };
-
-    const batch = writeBatch(firestore);
+    if (!sinkingFundsColRef) return;
     const fundDocRef = doc(sinkingFundsColRef, id);
-    
-    // Add the fund's current amount back to the allowance
-    const newAllowance = allowance + fundToDelete.currentAmount;
-
-    batch.delete(fundDocRef);
-    batch.update(userDocRef, { allowance: newAllowance });
-    
-    batch.commit();
-
-  }, [firestore, sinkingFundsColRef, userDocRef, sinkingFunds, allowance]);
+    deleteDocumentNonBlocking(fundDocRef);
+  }, [sinkingFundsColRef]);
   
   const allocateToSinkingFund = useCallback((id: string, amount: number) => {
       if (!firestore || !sinkingFundsColRef || !sinkingFunds || !userDocRef) return;
@@ -264,10 +245,6 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
           
           const batch = writeBatch(firestore);
           batch.update(fundDocRef, { currentAmount: newCurrentAmount });
-          // Note: The remainingBalance for allocation is now a derived value.
-          // Allocating to a sinking fund is essentially an "expense" from the spendable balance.
-          // This happens by increasing the `totalSinkingFundsAllocated` which in turn reduces `remainingBalance`.
-          // We don't need to touch the base `allowance` here anymore.
           batch.commit();
       }
   }, [firestore, sinkingFundsColRef, sinkingFunds, userDocRef, allowance]);
