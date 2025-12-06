@@ -165,12 +165,13 @@ export function AllExpenses() {
                         aria-label="Select all"
                     />
                 </TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead>Category</TableHead>
                 <TableHead>
                     <Button variant="ghost" onClick={() => requestSort('date')} className="px-2">
                         Date {getSortIndicator('date')}
                     </Button>
                 </TableHead>
-                <TableHead>Category</TableHead>
                 <TableHead className="text-right">
                     <Button variant="ghost" onClick={() => requestSort('amount')} className="px-2">
                         Amount {getSortIndicator('amount')}
@@ -191,12 +192,9 @@ export function AllExpenses() {
                             aria-label="Select row"
                         />
                      </TableCell>
-                    <TableCell>
+                     <TableCell>
                       <div className="font-medium">
                         {expense.notes || 'N/A'}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {format(parseISO(expense.date), "MMM d, yyyy")}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -206,6 +204,11 @@ export function AllExpenses() {
                                 {category.name}
                             </div>
                         }
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs text-muted-foreground">
+                        {format(parseISO(expense.date), "MMM d, yyyy")}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {currencyFormatter.format(expense.amount)}

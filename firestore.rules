@@ -125,6 +125,17 @@ service cloud.firestore {
     match /users/{userId}/expenses/{expenseId} {
       allow read, write: if isOwner(userId);
     }
+
+    /**
+     * @description Manages a user's recurring expenses.
+     * @path /users/{userId}/recurringExpenses/{recurringExpenseId}
+     * @allow A user (uid: 'user123') (list) their recurring expenses at `/users/user123/recurringExpenses`.
+     * @deny A different user (uid: 'user456') (delete) a recurring expense at `/users/user123/recurringExpenses/abc`.
+     * @principle Enforces strict document ownership within a user's data tree.
+     */
+    match /users/{userId}/recurringExpenses/{recurringExpenseId} {
+      allow read, write: if isOwner(userId);
+    }
     
     /**
      * @description Manages a user's individual income entries.

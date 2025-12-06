@@ -17,6 +17,15 @@ export type Expense = {
   date: string; // ISO 8601 string
 };
 
+export type RecurringExpense = {
+    id: string;
+    name: string;
+    amount: number;
+    categoryId: string;
+    period: 'daily' | 'weekly' | 'monthly';
+    nextDueDate: string; // ISO 8601 string
+}
+
 export type Income = {
   id: string;
   amount: number;

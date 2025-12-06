@@ -1,5 +1,6 @@
 "use client";
 
+import { RecurringExpenses } from "@/components/settings/recurring-expenses";
 import { SettingsForm } from "@/components/settings/settings-form";
 
 export default function SettingsPage() {
@@ -10,8 +11,9 @@ export default function SettingsPage() {
           Settings
         </h1>
       </div>
-      <div className="grid gap-4">
+      <div className="grid gap-6">
         <SettingsForm />
+        <RecurringExpenses />
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { SummaryCards } from "@/components/dashboard/summary-cards";
 import { useBudget } from "@/hooks/use-budget";
 import { AllowanceSetter } from "@/components/dashboard/allowance-setter";
 import { ExpenseImporter } from "@/components/expense-importer";
+import { DueExpenses } from "@/components/dashboard/due-expenses";
 
 
 export default function DashboardPage() {
@@ -26,6 +27,7 @@ export default function DashboardPage() {
       {allowance > 0 ? (
         <>
           <SummaryCards />
+          <DueExpenses />
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
             <CategoryBreakdown />
             <RecentExpenses />

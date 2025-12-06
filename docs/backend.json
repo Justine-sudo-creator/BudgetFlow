@@ -55,6 +55,42 @@
         "date"
       ]
     },
+    "RecurringExpense": {
+      "title": "Recurring Expense",
+      "type": "object",
+      "description": "Represents a recurring expense.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the recurring expense."
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of the expense."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "The ID of the category this expense belongs to."
+        },
+        "period": {
+          "type": "string",
+          "enum": ["daily", "weekly", "monthly"],
+          "description": "The frequency of the expense."
+        },
+        "nextDueDate": {
+          "type": "string",
+          "description": "The next due date in ISO 8601 format.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "name",
+        "amount",
+        "categoryId",
+        "period",
+        "nextDueDate"
+      ]
+    },
     "Income": {
       "title": "Income",
       "type": "object",
@@ -184,6 +220,12 @@
         "$ref": "#/entities/Expense"
       },
       "description": "Stores individual expense entries for a user."
+    },
+    "/users/{userId}/recurringExpenses/{recurringExpenseId}": {
+      "schema": {
+        "$ref": "#/entities/RecurringExpense"
+      },
+      "description": "Stores a user's recurring expenses."
     },
     "/users/{userId}/income/{incomeId}": {
       "schema": {

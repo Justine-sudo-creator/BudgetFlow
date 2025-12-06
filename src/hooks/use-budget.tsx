@@ -1,6 +1,7 @@
 
 
 
+
 "use client";
 
 import React, {
@@ -11,9 +12,9 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import type { Expense, Budget, Category, Income, BudgetTarget, SinkingFund } from "@/lib/types";
+import type { Expense, Budget, Category, Income, BudgetTarget, SinkingFund, RecurringExpense } from "@/lib/types";
 import { seedCategories } from "@/lib/seed";
-import { differenceInDays, parseISO } from "date-fns";
+import { differenceInDays, parseISO, addDays, addWeeks, addMonths } from "date-fns";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
 import { collection, doc, writeBatch, runTransaction } from "firebase/firestore";
 import { 
@@ -36,6 +37,10 @@ interface BudgetContextType {
   income: Income[];
   addIncome: (income: Omit<Income, "id">) => void;
   deleteIncomes: (ids: string[]) => void;
+  recurringExpenses: RecurringExpense[];
+  addRecurringExpense: (expense: Omit<RecurringExpense, "id">) => void;
+  deleteRecurringExpense: (id: string) => void;
+  logRecurringExpense: (id: string) => void;
   categories: Category[];
   budgets: Budget[];
   setBudgets: (budgets: Budget[], balanceSnapshot: number) => Promise<void>;
@@ -90,11 +95,17 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     return collection(userDocRef, 'sinkingFunds');
   }, [userDocRef]);
 
+  const recurringExpensesColRef = useMemoFirebase(() => {
+    if (!userDocRef) return null;
+    return collection(userDocRef, 'recurringExpenses');
+  }, [userDocRef]);
+
   const { data: userData, isLoading: userLoading } = useDoc<any>(userDocRef);
   const { data: expenses, isLoading: expensesLoading } = useCollection<Expense>(expensesColRef);
   const { data: income, isLoading: incomeLoading } = useCollection<Income>(incomeColRef);
   const { data: budgetsFromHook, isLoading: budgetsLoading } = useCollection<Budget>(budgetsColRef);
   const { data: sinkingFunds, isLoading: sinkingFundsLoading } = useCollection<SinkingFund>(sinkingFundsColRef);
+  const { data: recurringExpenses, isLoading: recurringExpensesLoading } = useCollection<RecurringExpense>(recurringExpensesColRef);
   
   const budgets = useMemo(() => {
     if (!budgetsFromHook) return [];
@@ -107,7 +118,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const balanceAtBudgetSet = userData?.balanceAtBudgetSet ?? 0;
 
 
-  const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading || sinkingFundsLoading;
+  const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading || sinkingFundsLoading || recurringExpensesLoading;
   
   const categories = seedCategories;
 
@@ -222,9 +233,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const setBudgets = useCallback((newBudgets: (Budget & {id?: string})[], balanceSnapshot: number) => {
     if (!firestore || !budgetsColRef || !userDocRef) return Promise.reject("Firestore not ready");
     
-    // Check if this is ONLY a savings update.
-    // This is true if there's only one budget item and its category is 'savings'.
-    const isSavingsOnlyUpdate = newBudgets.length === 1 && newBudgets[0].categoryId === 'savings';
+    const isSavingsOnlyUpdate = newBudgets.length === 1 && newBudgets[0].categoryId === 'savings' && !newBudgets[0].percentage;
 
     const batch = writeBatch(firestore);
 
@@ -275,15 +284,8 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     
     try {
         await runTransaction(firestore, async (transaction) => {
-            const userDoc = await transaction.get(userDocRef);
-            if (!userDoc.exists()) throw "User document does not exist!";
-            
-            const currentAllowance = userDoc.data().allowance;
-            // The total allowance should not change when moving money between spendable and sinking funds.
-            // The money is already in the budget.
-            
             const fundDocRef = doc(sinkingFundsColRef, fund.id);
-            transaction.set(fundDocRef, { 
+            transaction.update(fundDocRef, { 
               name: fund.name, 
               targetAmount: fund.targetAmount, 
               currentAmount: fund.currentAmount 
@@ -348,6 +350,50 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Spending from sinking fund failed:", error);
     }
 }, [firestore, sinkingFundsColRef, expensesColRef, sinkingFunds]);
+
+  const addRecurringExpense = useCallback((expense: Omit<RecurringExpense, 'id'>) => {
+    if (!recurringExpensesColRef) return;
+    addDocumentNonBlocking(recurringExpensesColRef, expense);
+  }, [recurringExpensesColRef]);
+
+  const deleteRecurringExpense = useCallback((id: string) => {
+    if (!recurringExpensesColRef) return;
+    const docRef = doc(recurringExpensesColRef, id);
+    deleteDocumentNonBlocking(docRef);
+  }, [recurringExpensesColRef]);
+
+  const logRecurringExpense = useCallback((id: string) => {
+      if (!recurringExpensesColRef || !expensesColRef || !recurringExpenses) return;
+
+      const expenseToLog = recurringExpenses.find(e => e.id === id);
+      if (!expenseToLog) return;
+      
+      const newExpense = {
+          amount: expenseToLog.amount,
+          categoryId: expenseToLog.categoryId,
+          date: new Date().toISOString(),
+          notes: expenseToLog.name,
+      };
+      addDocumentNonBlocking(expensesColRef, newExpense);
+      
+      let nextDueDate: Date;
+      const currentDueDate = parseISO(expenseToLog.nextDueDate);
+      switch(expenseToLog.period) {
+          case 'daily':
+              nextDueDate = addDays(currentDueDate, 1);
+              break;
+          case 'weekly':
+              nextDueDate = addWeeks(currentDueDate, 1);
+              break;
+          case 'monthly':
+              nextDueDate = addMonths(currentDueDate, 1);
+              break;
+      }
+      
+      const recurringDocRef = doc(recurringExpensesColRef, id);
+      updateDocumentNonBlocking(recurringDocRef, { nextDueDate: nextDueDate.toISOString() });
+
+  }, [recurringExpensesColRef, expensesColRef, recurringExpenses]);
 
 
   const totalSpent = useMemo(
@@ -444,6 +490,10 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     income: income ?? [],
     addIncome,
     deleteIncomes,
+    recurringExpenses: recurringExpenses ?? [],
+    addRecurringExpense,
+    deleteRecurringExpense,
+    logRecurringExpense,
     categories,
     budgets: budgets ?? [],
     setBudgets,
