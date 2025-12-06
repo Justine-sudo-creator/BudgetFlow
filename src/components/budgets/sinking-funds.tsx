@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useBudget } from "@/hooks/use-budget";
@@ -7,7 +8,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, PiggyBank, Edit } from "lucide-react";
+import { Plus, Trash2, PiggyBank, Edit, ShoppingCart } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,9 +30,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import type { SinkingFund } from "@/lib/types";
+import type { SinkingFund, Category } from "@/lib/types";
 import { Progress } from "../ui/progress";
 import { Skeleton } from "../ui/skeleton";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../ui/select";
+
 
 const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -88,6 +91,14 @@ function AllocateToFundForm({ fund, onSave }: { fund: SinkingFund, onSave: () =>
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        if (amount <= 0) {
+            toast({
+                variant: 'destructive',
+                title: "Invalid Amount",
+                description: `Please enter a positive amount to allocate.`,
+            });
+            return;
+        }
         if (amount > remainingBalance) {
             toast({
                 variant: 'destructive',
@@ -116,6 +127,64 @@ function AllocateToFundForm({ fund, onSave }: { fund: SinkingFund, onSave: () =>
                     <Button type="button" variant="outline">Cancel</Button>
                 </DialogClose>
                 <Button type="submit">Allocate</Button>
+            </DialogFooter>
+        </form>
+    );
+}
+
+function SpendFromFundForm({ fund, onSave }: { fund: SinkingFund, onSave: () => void }) {
+    const { spendFromSinkingFund, categories } = useBudget();
+    const [categoryId, setCategoryId] = useState('');
+    const { toast } = useToast();
+
+    const expenseCategories = categories.filter(c => c.type !== 'savings');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!categoryId) {
+            toast({
+                variant: 'destructive',
+                title: "No Category Selected",
+                description: "Please select a category for this expense.",
+            });
+            return;
+        }
+        spendFromSinkingFund(fund.id, categoryId);
+        toast({
+            title: "Fund Spent!",
+            description: `The '${fund.name}' fund has been recorded as an expense.`,
+        });
+        onSave();
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+             <div className="space-y-2">
+                <Label htmlFor="expense-category">Expense Category</Label>
+                 <Select onValueChange={setCategoryId} value={categoryId}>
+                    <SelectTrigger id="expense-category">
+                        <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {expenseCategories.map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                                <div className="flex items-center gap-2">
+                                    <category.icon className="w-4 h-4" />
+                                    {category.name}
+                                </div>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+             <p className="text-xs text-muted-foreground">
+                This will create an expense of {currencyFormatter.format(fund.currentAmount)} and delete the fund.
+             </p>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button type="button" variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button type="submit">Record Expense</Button>
             </DialogFooter>
         </form>
     );
@@ -158,6 +227,7 @@ export function SinkingFunds() {
         ) : (
           sinkingFunds.map(fund => {
             const progress = fund.targetAmount > 0 ? (fund.currentAmount / fund.targetAmount) * 100 : 0;
+            const isTargetMet = fund.currentAmount >= fund.targetAmount && fund.targetAmount > 0;
             return (
               <div key={fund.id} className="border p-3 rounded-lg">
                 <div className="flex justify-between items-start">
@@ -190,7 +260,7 @@ export function SinkingFunds() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This will permanently delete the '{fund.name}' fund. This action cannot be undone.
+                                This will permanently delete the '{fund.name}' fund. The current amount of {currencyFormatter.format(fund.currentAmount)} will be returned to your spendable balance. This action cannot be undone.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -202,20 +272,36 @@ export function SinkingFunds() {
                     </div>
                 </div>
                 <Progress value={progress} className="my-2 h-2" />
-                <Dialog open={openDialogs[`allocate-${fund.id}`]} onOpenChange={(open) => handleOpenChange(`allocate-${fund.id}`, open)}>
-                    <DialogTrigger asChild>
-                        <Button variant="secondary" size="sm" className="w-full mt-2">
-                            <PiggyBank className="mr-2 h-4 w-4" /> Allocate Funds
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                         <DialogHeader>
-                            <DialogTitle>Allocate to '{fund.name}'</DialogTitle>
-                            <DialogDescription>Add money from your remaining balance to this fund.</DialogDescription>
-                         </DialogHeader>
-                         <AllocateToFundForm fund={fund} onSave={() => handleOpenChange(`allocate-${fund.id}`, false)} />
-                    </DialogContent>
-                </Dialog>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Dialog open={openDialogs[`allocate-${fund.id}`]} onOpenChange={(open) => handleOpenChange(`allocate-${fund.id}`, open)}>
+                        <DialogTrigger asChild>
+                            <Button variant="secondary" size="sm" className="w-full">
+                                <PiggyBank className="mr-2 h-4 w-4" /> Allocate
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                             <DialogHeader>
+                                <DialogTitle>Allocate to '{fund.name}'</DialogTitle>
+                                <DialogDescription>Add money from your remaining balance to this fund.</DialogDescription>
+                             </DialogHeader>
+                             <AllocateToFundForm fund={fund} onSave={() => handleOpenChange(`allocate-${fund.id}`, false)} />
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog open={openDialogs[`spend-${fund.id}`]} onOpenChange={(open) => handleOpenChange(`spend-${fund.id}`, open)}>
+                        <DialogTrigger asChild>
+                            <Button variant="default" size="sm" className="w-full" disabled={!isTargetMet}>
+                                <ShoppingCart className="mr-2 h-4 w-4" /> Spend
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                             <DialogHeader>
+                                <DialogTitle>Spend from '{fund.name}'</DialogTitle>
+                                <DialogDescription>Record this as an expense and close the fund.</DialogDescription>
+                             </DialogHeader>
+                             <SpendFromFundForm fund={fund} onSave={() => handleOpenChange(`spend-${fund.id}`, false)} />
+                        </DialogContent>
+                    </Dialog>
+                </div>
               </div>
             );
           })
@@ -240,3 +326,5 @@ export function SinkingFunds() {
     </Card>
   );
 }
+
+    

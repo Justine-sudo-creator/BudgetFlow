@@ -1,5 +1,6 @@
 
 
+
 "use client";
 
 import React, {
@@ -14,7 +15,7 @@ import type { Expense, Budget, Category, Income, BudgetTarget, SinkingFund } fro
 import { seedCategories } from "@/lib/seed";
 import { differenceInDays, parseISO } from "date-fns";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
-import { collection, doc, writeBatch } from "firebase/firestore";
+import { collection, doc, writeBatch, runTransaction } from "firebase/firestore";
 import { 
   addDocumentNonBlocking,
   setDocumentNonBlocking,
@@ -37,7 +38,8 @@ interface BudgetContextType {
   deleteIncomes: (ids: string[]) => void;
   categories: Category[];
   budgets: Budget[];
-  setBudgets: (budgets: Budget[]) => Promise<void>;
+  setBudgets: (budgets: Budget[], balanceSnapshot: number) => Promise<void>;
+  resetBudgetPlan: () => Promise<void>;
   budgetTarget: BudgetTarget;
   setBudgetTarget: (target: BudgetTarget) => void;
   sinkingFunds: SinkingFund[];
@@ -45,8 +47,10 @@ interface BudgetContextType {
   updateSinkingFund: (fund: SinkingFund) => void;
   deleteSinkingFund: (id: string) => void;
   allocateToSinkingFund: (id: string, amount: number) => void;
+  spendFromSinkingFund: (sinkingFundId: string, categoryId: string) => void;
   totalSpent: number;
   remainingBalance: number;
+  balanceAtBudgetSet: number;
   dailyAverage: number;
   survivalDays: number;
   getCategoryById: (id: string) => Category | undefined;
@@ -100,6 +104,8 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
 
   const allowance = userData?.allowance ?? 0;
   const budgetTarget = userData?.budgetTarget ?? { amount: 0, period: 'daily' };
+  const balanceAtBudgetSet = userData?.balanceAtBudgetSet ?? 0;
+
 
   const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading || sinkingFundsLoading;
   
@@ -169,85 +175,179 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   
   const addIncome = useCallback(
     (incomeItem: Omit<Income, "id">) => {
-      if (!incomeColRef || !userDocRef) return;
-      addDocumentNonBlocking(incomeColRef, incomeItem);
-      const newAllowance = allowance + incomeItem.amount;
-      updateDocumentNonBlocking(userDocRef, { allowance: newAllowance });
+        if (!firestore || !incomeColRef || !userDocRef) return;
+        
+        runTransaction(firestore, async (transaction) => {
+            const userDoc = await transaction.get(userDocRef);
+            if (!userDoc.exists()) {
+                throw "User document does not exist!";
+            }
+            const newAllowance = (userDoc.data().allowance || 0) + incomeItem.amount;
+            transaction.update(userDocRef, { allowance: newAllowance });
+
+            const newIncomeDocRef = doc(incomeColRef);
+            transaction.set(newIncomeDocRef, incomeItem);
+        }).catch(error => console.error("Add income transaction failed:", error));
     },
-    [incomeColRef, userDocRef, allowance]
-  );
+    [firestore, incomeColRef, userDocRef]
+);
 
   const deleteIncomes = useCallback(
     (ids: string[]) => {
         if (!firestore || !incomeColRef || !userDocRef || !income) return;
-        const batch = writeBatch(firestore);
-        let amountToReduce = 0;
-        
-        ids.forEach(id => {
-            const incomeToDelete = income.find(inc => inc.id === id);
-            if (incomeToDelete) {
-                amountToReduce += incomeToDelete.amount;
-                batch.delete(doc(incomeColRef, id));
+        runTransaction(firestore, async (transaction) => {
+            const userDoc = await transaction.get(userDocRef);
+             if (!userDoc.exists()) {
+                throw "User document does not exist!";
             }
-        });
-        const newAllowance = allowance - amountToReduce;
-        batch.update(userDocRef, { allowance: newAllowance });
+            const currentAllowance = userDoc.data().allowance || 0;
+            let amountToReduce = 0;
+            
+            for (const id of ids) {
+                const incomeToDelete = income.find(inc => inc.id === id);
+                if (incomeToDelete) {
+                    amountToReduce += incomeToDelete.amount;
+                    const incomeDocRef = doc(incomeColRef, id);
+                    transaction.delete(incomeDocRef);
+                }
+            }
 
-        batch.commit().catch(error => console.error("Batch delete incomes failed:", error));
+            const newAllowance = currentAllowance - amountToReduce;
+            transaction.update(userDocRef, { allowance: newAllowance });
+        }).catch(error => console.error("Batch delete incomes transaction failed:", error));
     },
-    [firestore, incomeColRef, userDocRef, income, allowance]
+    [firestore, incomeColRef, userDocRef, income]
   );
   
-  const setBudgets = useCallback((newBudgets: Budget[]) => {
-    if (!firestore || !budgetsColRef) return Promise.reject("Firestore not ready");
-    const batch = writeBatch(firestore);
+  const setBudgets = useCallback((newBudgets: (Budget & {id?: string})[], balanceSnapshot: number) => {
+    if (!firestore || !budgetsColRef || !userDocRef) return Promise.reject("Firestore not ready");
     
-    // Create a map of the existing budgets for quick lookup
-    const existingBudgetsMap = new Map(budgets.map(b => [b.categoryId, b]));
+    // Check if this is ONLY a savings update.
+    // This is true if there's only one budget item and its category is 'savings'.
+    const isSavingsOnlyUpdate = newBudgets.length === 1 && newBudgets[0].categoryId === 'savings';
+
+    const batch = writeBatch(firestore);
 
     newBudgets.forEach(b => {
-      const docRef = doc(budgetsColRef, b.categoryId);
-      const dataToSet: Partial<Budget> & { categoryId?: string } = { ...b };
-      delete dataToSet.categoryId; // Don't save categoryId in the document itself
-
-      if (Object.keys(dataToSet).length > 0) {
-        batch.set(docRef, dataToSet, { merge: true });
-      }
+      const docId = b.categoryId;
+      const docRef = doc(budgetsColRef, docId);
+      const dataToSet: Partial<Budget> & { id?: string, categoryId?: string } = { ...b };
+      delete dataToSet.id;
+      delete dataToSet.categoryId;
+      batch.set(docRef, dataToSet, { merge: true });
     });
+
+    if (!isSavingsOnlyUpdate) {
+        batch.update(userDocRef, { balanceAtBudgetSet: balanceSnapshot });
+    }
     
     return batch.commit();
-  }, [firestore, budgetsColRef, budgets]);
+  }, [firestore, budgetsColRef, userDocRef]);
+
+  const resetBudgetPlan = useCallback(() => {
+    if (!firestore || !budgetsColRef || !userDocRef) return Promise.reject("Firestore not ready");
+    const batch = writeBatch(firestore);
+    
+    batch.update(userDocRef, { balanceAtBudgetSet: 0 });
+
+    const spendCategoryIds = categories.filter(c => c.type !== 'savings').map(c => c.id);
+    spendCategoryIds.forEach(catId => {
+      const docRef = doc(budgetsColRef, catId);
+      batch.set(docRef, { amount: 0, percentage: 0 }, { merge: true });
+    });
+
+    return batch.commit();
+  }, [firestore, budgetsColRef, userDocRef, categories]);
+
 
   const addSinkingFund = useCallback((fund: Omit<SinkingFund, 'id' | 'currentAmount'>) => {
     if (!sinkingFundsColRef) return;
     addDocumentNonBlocking(sinkingFundsColRef, { ...fund, currentAmount: 0 });
   }, [sinkingFundsColRef]);
 
-  const updateSinkingFund = useCallback((fund: SinkingFund) => {
-    if (!sinkingFundsColRef) return;
-    const { id, ...data } = fund;
-    const docRef = doc(sinkingFundsColRef, id);
-    updateDocumentNonBlocking(docRef, data);
-  }, [sinkingFundsColRef]);
+ const updateSinkingFund = useCallback(async (fund: SinkingFund) => {
+    if (!firestore || !sinkingFundsColRef || !sinkingFunds || !userDocRef) return;
 
-  const deleteSinkingFund = useCallback((id: string) => {
+    const originalFund = sinkingFunds.find(f => f.id === fund.id);
+    if (!originalFund) return;
+
+    const difference = fund.currentAmount - originalFund.currentAmount;
+    
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            const userDoc = await transaction.get(userDocRef);
+            if (!userDoc.exists()) throw "User document does not exist!";
+            
+            const currentAllowance = userDoc.data().allowance;
+            // The total allowance should not change when moving money between spendable and sinking funds.
+            // The money is already in the budget.
+            
+            const fundDocRef = doc(sinkingFundsColRef, fund.id);
+            transaction.set(fundDocRef, { 
+              name: fund.name, 
+              targetAmount: fund.targetAmount, 
+              currentAmount: fund.currentAmount 
+            });
+        });
+    } catch (error) {
+        console.error("Sinking fund update transaction failed: ", error);
+    }
+}, [firestore, sinkingFundsColRef, sinkingFunds, userDocRef]);
+
+
+  const deleteSinkingFund = useCallback(async (id: string) => {
     if (!sinkingFundsColRef) return;
     const fundDocRef = doc(sinkingFundsColRef, id);
     deleteDocumentNonBlocking(fundDocRef);
   }, [sinkingFundsColRef]);
   
-  const allocateToSinkingFund = useCallback((id: string, amount: number) => {
-      if (!firestore || !sinkingFundsColRef || !sinkingFunds || !userDocRef) return;
+  const allocateToSinkingFund = useCallback(async (id: string, amount: number) => {
+      if (!firestore || !sinkingFundsColRef || !sinkingFunds || !userDocRef || amount <= 0) return;
+      
       const fund = sinkingFunds.find(f => f.id === id);
-      if (fund) {
-          const newCurrentAmount = (fund.currentAmount || 0) + amount;
-          const fundDocRef = doc(sinkingFundsColRef, id);
-          
-          const batch = writeBatch(firestore);
-          batch.update(fundDocRef, { currentAmount: newCurrentAmount });
-          batch.commit();
+      if (!fund) return;
+      
+      try {
+        await runTransaction(firestore, async (transaction) => {
+            const fundDocRef = doc(sinkingFundsColRef, id);
+            const fundDoc = await transaction.get(fundDocRef);
+            if (!fundDoc.exists()) {
+                throw `Sinking fund with id ${id} does not exist!`;
+            }
+            
+            const newCurrentAmount = (fundDoc.data().currentAmount || 0) + amount;
+            transaction.update(fundDocRef, { currentAmount: newCurrentAmount });
+        });
+      } catch (error) {
+        console.error("Allocating to sinking fund failed:", error);
       }
-  }, [firestore, sinkingFundsColRef, sinkingFunds, userDocRef, allowance]);
+  }, [firestore, sinkingFundsColRef, sinkingFunds, userDocRef]);
+
+  const spendFromSinkingFund = useCallback(async (sinkingFundId: string, categoryId: string) => {
+    if (!firestore || !sinkingFundsColRef || !expensesColRef || !sinkingFunds) return;
+    
+    const fund = sinkingFunds.find(f => f.id === sinkingFundId);
+    if (!fund || fund.currentAmount <= 0) return;
+
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            // 1. Create the new expense
+            const newExpenseRef = doc(expensesColRef);
+            transaction.set(newExpenseRef, {
+                amount: fund.currentAmount,
+                categoryId: categoryId,
+                date: new Date().toISOString(),
+                notes: `Purchase from sinking fund: ${fund.name}`,
+            });
+
+            // 2. Delete the sinking fund
+            const fundDocRef = doc(sinkingFundsColRef, sinkingFundId);
+            transaction.delete(fundDocRef);
+        });
+    } catch (error) {
+        console.error("Spending from sinking fund failed:", error);
+    }
+}, [firestore, sinkingFundsColRef, expensesColRef, sinkingFunds]);
 
 
   const totalSpent = useMemo(
@@ -347,6 +447,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     categories,
     budgets: budgets ?? [],
     setBudgets,
+    resetBudgetPlan,
     budgetTarget,
     setBudgetTarget,
     sinkingFunds: sinkingFunds ?? [],
@@ -354,8 +455,10 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     updateSinkingFund,
     deleteSinkingFund,
     allocateToSinkingFund,
+    spendFromSinkingFund,
     totalSpent,
     remainingBalance,
+    balanceAtBudgetSet,
     dailyAverage,
     survivalDays,
     getCategoryById,
@@ -376,3 +479,5 @@ export const useBudget = () => {
   }
   return context;
 };
+
+    

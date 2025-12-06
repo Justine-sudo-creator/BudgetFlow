@@ -9,7 +9,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import type { Budget, CategoryType, Category } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Sparkles, Save } from "lucide-react";
+import { Sparkles, Save, RotateCcw } from "lucide-react";
 import { getBudgetAllocation } from "@/ai/flows/budget-allocation-flow";
 import { Skeleton } from "../ui/skeleton";
 import { Badge } from "../ui/badge";
@@ -17,6 +17,7 @@ import { MarkdownContent } from "../insights/markdown-content";
 import { subDays, parseISO, format } from "date-fns";
 import { Textarea } from "../ui/textarea";
 import { Progress } from "../ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 
 const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -30,7 +31,10 @@ const typeVariant: Record<CategoryType, "default" | "secondary" | "outline"> = {
 }
 
 export function CategoryBudgets() {
-  const { allowance, categories, budgets, getSpentForCategory, expenses, isLoading, remainingBalance, sinkingFunds, setBudgets } = useBudget();
+  const { 
+    allowance, categories, budgets, getSpentForCategory, expenses, isLoading, 
+    remainingBalance, sinkingFunds, setBudgets, balanceAtBudgetSet, resetBudgetPlan 
+  } = useBudget();
   const [localPercentages, setLocalPercentages] = useState<Record<string, number>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -41,6 +45,14 @@ export function CategoryBudgets() {
   const spendCategories = useMemo(() => categories.filter(c => c.type !== 'savings'), [categories]);
   const savingsBudgetAmount = useMemo(() => budgets.find(b => b.categoryId === 'savings')?.amount ?? 0, [budgets]);
   
+  // A flag to indicate if a budget plan is currently active and "locked in"
+  const isPlanActive = useMemo(() => balanceAtBudgetSet > 0, [balanceAtBudgetSet]);
+
+  // Determine the base balance for budget calculations
+  const planningBalance = useMemo(() => {
+    return isPlanActive ? balanceAtBudgetSet : remainingBalance;
+  }, [isPlanActive, balanceAtBudgetSet, remainingBalance]);
+
   useEffect(() => {
     if (budgets.length > 0) {
         const initialPercentages = budgets.reduce((acc, budget) => {
@@ -55,6 +67,7 @@ export function CategoryBudgets() {
 
 
   const handlePercentageChange = (categoryId: string, percentageStr: string) => {
+    if (isPlanActive) return; // Don't allow changes if a plan is active
     const percentage = parseFloat(percentageStr);
     if (isNaN(percentage)) {
       setLocalPercentages(prev => ({ ...prev, [categoryId]: 0 }));
@@ -77,24 +90,32 @@ export function CategoryBudgets() {
         return;
     }
     
+    // Use the current remainingBalance as the snapshot for this new plan
+    const balanceSnapshot = remainingBalance;
+
     const newBudgets: Budget[] = spendCategories.map(category => {
         const percentage = localPercentages[category.id] || 0;
-        const allocatedFromRemaining = (percentage / 100) * remainingBalance;
-        const spent = getSpentForCategory(category.id);
-        const totalBudgetForCategory = spent + allocatedFromRemaining;
+        const allocatedAmount = (percentage / 100) * balanceSnapshot;
         
         return {
+            id: category.id,
             categoryId: category.id,
-            amount: totalBudgetForCategory,
+            amount: allocatedAmount,
             percentage,
         }
     });
 
+    // We must also include the savings budget in the array we pass to setBudgets
+    const savingsBudget = budgets.find(b => b.categoryId === 'savings');
+    if (savingsBudget) {
+      newBudgets.push(savingsBudget as Budget & {id: string});
+    }
+
     try {
-        await setBudgets(newBudgets);
+        await setBudgets(newBudgets, balanceSnapshot);
         toast({
             title: "Budget Plan Saved!",
-            description: "Your new category percentage allocations have been saved.",
+            description: "Your new category budgets have been locked in.",
         });
     } catch(error) {
         console.error("Failed to save budget plan", error);
@@ -106,12 +127,37 @@ export function CategoryBudgets() {
     }
   };
 
+  const handleResetPlan = async () => {
+    try {
+      await resetBudgetPlan();
+      toast({
+        title: "Budget Plan Reset",
+        description: "You can now create a new budget plan with your current balance.",
+      });
+    } catch(error) {
+       console.error("Failed to reset budget plan", error);
+        toast({
+            variant: "destructive",
+            title: "Reset Failed",
+            description: "Could not reset your budget plan.",
+        });
+    }
+  }
+
   const handleGetBudgetAllocation = async () => {
     if (allowance <= 0) {
         toast({
             variant: "destructive",
             title: "Set Allowance First",
             description: "You need to set your total allowance before the AI can create a budget.",
+        });
+        return;
+    }
+     if (isPlanActive) {
+        toast({
+            variant: "destructive",
+            title: "Plan is Active",
+            description: "Please reset your current budget plan before generating a new one.",
         });
         return;
     }
@@ -167,12 +213,17 @@ export function CategoryBudgets() {
   };
 
   const totalAllocatedPercentage = useMemo(() => {
+    if (isPlanActive) {
+        // If plan is active, sum the stored percentages
+        return budgets.reduce((total, b) => total + (b.percentage || 0), 0);
+    }
+    // Otherwise, use the local state for planning
     return Object.values(localPercentages).reduce((total, p) => total + (p || 0), 0);
-  }, [localPercentages]);
+  }, [localPercentages, isPlanActive, budgets]);
 
   const totalAllocatedAmount = useMemo(() => {
-    return (totalAllocatedPercentage / 100) * remainingBalance;
-  }, [totalAllocatedPercentage, remainingBalance]);
+    return (totalAllocatedPercentage / 100) * planningBalance;
+  }, [totalAllocatedPercentage, planningBalance]);
 
   if (isLoading) {
     return (
@@ -193,7 +244,7 @@ export function CategoryBudgets() {
       <Card className="mb-6">
           <CardHeader>
               <CardTitle>AI Budget Planner</CardTitle>
-              <CardDescription>Let AI create a balanced budget for your remaining funds based on your spending and current context.</CardDescription>
+              <CardDescription>Let AI create a balanced budget for your remaining funds. It works best when you don't have a plan set.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div>
@@ -204,13 +255,16 @@ export function CategoryBudgets() {
                       value={userContext}
                       onChange={(e) => setUserContext(e.target.value)}
                       className="mt-1"
+                      disabled={isPlanActive}
                   />
               </div>
-              <Button onClick={handleGetBudgetAllocation} disabled={isGenerating || allowance <= 0} className="w-full">
-                  {isGenerating ? "Generating Budget..." : (
+              <Button onClick={handleGetBudgetAllocation} disabled={isGenerating || allowance <= 0 || isPlanActive} className="w-full">
+                  {isGenerating ? "Generating..." : (
                       <>
                           <Sparkles className="mr-2 h-4 w-4" />
-                          {allowance > 0 ? "Generate AI Budget Plan" : "Set Allowance to Enable AI"}
+                          {allowance <= 0 && "Set Allowance to Enable AI"}
+                          {allowance > 0 && isPlanActive && "Reset Plan to Generate New AI Budget"}
+                          {allowance > 0 && !isPlanActive && "Generate AI Budget Plan"}
                       </>
                   )}
               </Button>
@@ -220,7 +274,7 @@ export function CategoryBudgets() {
                       <Skeleton className="h-4 w-5/6" />
                   </div>
               )}
-              {suggestion && (
+              {suggestion && !isPlanActive && (
                   <div className="prose prose-sm dark:prose-invert rounded-lg border p-4 mt-4">
                     <MarkdownContent content={suggestion} />
                   </div>
@@ -229,64 +283,111 @@ export function CategoryBudgets() {
       </Card>
       
       <div className="space-y-8 mt-6">
-          <div className="p-4 bg-muted rounded-lg text-center sticky top-0 z-10">
-              <p className="text-sm text-muted-foreground">Plan your budget from your remaining balance.</p>
-              <p className="text-lg font-bold">{currencyFormatter.format(remainingBalance)}</p>
-              <div className="flex justify-center items-baseline gap-2">
-                <p className={`text-sm font-semibold ${totalAllocatedPercentage > 100 ? 'text-destructive' : 'text-primary'}`}>
-                    {Math.round(totalAllocatedPercentage)}% Allocated
-                </p>
-                <p className="text-xs text-muted-foreground">
-                    ({currencyFormatter.format(totalAllocatedAmount)})
-                </p>
-              </div>
-          </div>
-          {spendCategories.map(category => {
-              const spent = getSpentForCategory(category.id);
-              const percentage = localPercentages[category.id] ?? 0;
-              const allocatedFromRemaining = (percentage / 100) * remainingBalance;
-              const totalBudgetForCategory = spent + allocatedFromRemaining;
-              const leftToSpend = totalBudgetForCategory - spent;
-              const progress = totalBudgetForCategory > 0 ? (spent / totalBudgetForCategory) * 100 : 0;
-
-
-              return (
-                  <div key={category.id}>
-                      <div className="flex items-center justify-between mb-2">
-                          <Label htmlFor={`budget-percentage-${category.id}`} className="flex items-center gap-2 text-base">
-                          <category.icon className="w-5 h-5 text-muted-foreground" />
-                          {category.name}
-                          </Label>
-                          <Badge variant={typeVariant[category.type]} className="capitalize text-xs h-5">{category.type}</Badge>
-                      </div>
-                      <div className="flex items-center gap-4">
-                          <Input
-                              id={`budget-percentage-${category.id}`}
-                              type="number"
-                              placeholder="0"
-                              value={localPercentages[category.id] || ''}
-                              onChange={(e) => handlePercentageChange(category.id, e.target.value)}
-                              className="w-24"
-                          />
-                          <span className="text-lg font-semibold">%</span>
-                          <span className="text-sm text-muted-foreground">
-                              = {currencyFormatter.format(allocatedFromRemaining)}
-                          </span>
-                      </div>
-                      <div className="mt-2 space-y-1">
-                          <Progress value={progress} className="h-2" />
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{currencyFormatter.format(spent)} spent</span>
-                            <span className="font-semibold text-foreground">{currencyFormatter.format(leftToSpend)} left</span>
-                            <span>{currencyFormatter.format(totalBudgetForCategory)} total</span>
-                          </div>
-                      </div>
+          <div className="p-4 bg-muted rounded-lg sticky top-0 z-10 space-y-2">
+              <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                      <p className="text-sm text-muted-foreground">Current Live Balance</p>
+                      <p className="text-lg font-bold">{currencyFormatter.format(remainingBalance)}</p>
                   </div>
-              )
-          })}
-           <Button onClick={handleSavePlan} className="w-full">
-                <Save className="mr-2 h-4 w-4" /> Save Plan
-            </Button>
+                  <div>
+                      <p className="text-sm text-muted-foreground">Budget Based On</p>
+                      <p className="text-lg font-bold">{currencyFormatter.format(planningBalance)}</p>
+                  </div>
+              </div>
+              {isPlanActive && (
+                <Alert>
+                  <AlertTitle>Budget Plan Active</AlertTitle>
+                  <AlertDescription>
+                    Your category budgets are locked. To make changes, reset the plan.
+                  </AlertDescription>
+                </Alert>
+              )}
+          </div>
+
+          <div className="p-4 border rounded-lg">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Category Allocation</h3>
+                <div className="text-right">
+                    <p className={`text-sm font-semibold ${totalAllocatedPercentage > 100 ? 'text-destructive' : 'text-primary'}`}>
+                        {Math.round(totalAllocatedPercentage)}% Allocated
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        ({currencyFormatter.format(totalAllocatedAmount)})
+                    </p>
+                </div>
+            </div>
+            <div className="space-y-6">
+            {spendCategories.map(category => {
+                const spent = getSpentForCategory(category.id);
+                const budgetForCat = budgets.find(b => b.categoryId === category.id);
+                
+                let allocatedBudget: number;
+                if (isPlanActive) {
+                    allocatedBudget = budgetForCat?.amount ?? 0;
+                } else {
+                    const percentage = localPercentages[category.id] ?? 0;
+                    allocatedBudget = (percentage / 100) * planningBalance;
+                }
+
+                // If a plan is active, leftToSpend is the allocated amount minus what's been spent *since the plan was set*.
+                // For simplicity in this implementation, we will always show the allocated amount as "left to spend" when planning.
+                // When a plan is active, this value represents the budget for the period going forward.
+                const leftToSpend = allocatedBudget;
+                
+                // The total for the progress bar is what's been spent + what's newly allocated.
+                // This correctly represents the "total funds" for the category for the period.
+                const totalForProgress = spent + allocatedBudget;
+
+                const progress = totalForProgress > 0 ? (spent / totalForProgress) * 100 : 0;
+
+
+                return (
+                    <div key={category.id}>
+                        <div className="flex items-center justify-between mb-2">
+                            <Label htmlFor={`budget-percentage-${category.id}`} className="flex items-center gap-2 text-base">
+                            <category.icon className="w-5 h-5 text-muted-foreground" />
+                            {category.name}
+                            </Label>
+                            <Badge variant={typeVariant[category.type]} className="capitalize text-xs h-5">{category.type}</Badge>
+                        </div>
+                         <div className="flex items-center gap-4">
+                              <Input
+                                  id={`budget-percentage-${category.id}`}
+                                  type="number"
+                                  placeholder="0"
+                                  value={isPlanActive ? budgetForCat?.percentage ?? '' : localPercentages[category.id] || ''}
+                                  onChange={(e) => handlePercentageChange(category.id, e.target.value)}
+                                  className="w-24"
+                                  readOnly={isPlanActive}
+                                  aria-readonly={isPlanActive}
+                              />
+                              <span className="text-lg font-semibold">%</span>
+                              <span className="text-sm text-muted-foreground">
+                                  = {currencyFormatter.format(allocatedBudget)}
+                              </span>
+                          </div>
+                        <div className="mt-2 space-y-1">
+                            <Progress value={progress} className="h-2" />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>{currencyFormatter.format(spent)} spent</span>
+                              <span className={`font-semibold ${leftToSpend < 0 ? 'text-destructive' : 'text-foreground'}`}>{currencyFormatter.format(leftToSpend)} left</span>
+                              <span>{currencyFormatter.format(totalForProgress)} total</span>
+                            </div>
+                        </div>
+                    </div>
+                )
+            })}
+            </div>
+          </div>
+
+           <div className="grid grid-cols-2 gap-4">
+                <Button onClick={handleResetPlan} variant="outline" disabled={!isPlanActive}>
+                    <RotateCcw className="mr-2 h-4 w-4" /> Reset & Re-plan
+                </Button>
+                <Button onClick={handleSavePlan} disabled={isPlanActive}>
+                    <Save className="mr-2 h-4 w-4" /> Save & Lock Plan
+                </Button>
+            </div>
       </div>
     </>
   );

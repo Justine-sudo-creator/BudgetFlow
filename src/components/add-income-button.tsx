@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -5,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet";
 import { IncomeForm } from "@/components/income-form";
 import { TrendingUp } from "lucide-react";
+import { ScrollArea } from "./ui/scroll-area";
 
 export function AddIncomeButton() {
   const [open, setOpen] = useState(false);
@@ -23,7 +25,11 @@ export function AddIncomeButton() {
             Log any new income to add to your allowance.
           </SheetDescription>
         </SheetHeader>
-        <IncomeForm afterSubmit={() => setOpen(false)} />
+        <ScrollArea className="h-[calc(100vh-8rem)]">
+            <div className="p-4">
+                <IncomeForm afterSubmit={() => setOpen(false)} />
+            </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useBudget } from "@/hooks/use-budget";
@@ -8,6 +9,7 @@ import { Label } from "../ui/label";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
+import type { Budget } from "@/lib/types";
 
 const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -15,27 +17,29 @@ const currencyFormatter = new Intl.NumberFormat("en-PH", {
 });
 
 export function SavingsBudget() {
-  const { budgets, setBudgets, isLoading, totalSpent, allowance, remainingBalance } = useBudget();
+  const { budgets, setBudgets, isLoading, remainingBalance } = useBudget();
   const [savingsAmount, setSavingsAmount] = useState<number>(0);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   const savingsBudget = budgets.find(b => b.categoryId === 'savings');
+  const otherBudgets = budgets.filter(b => b.categoryId !== 'savings');
 
   useEffect(() => {
     if (savingsBudget) {
       setSavingsAmount(savingsBudget.amount);
+    } else {
+      setSavingsAmount(0);
     }
   }, [savingsBudget]);
 
   const handleSaveSavings = async () => {
     setIsSaving(true);
 
-    const otherBudgets = budgets.filter(b => b.categoryId !== 'savings');
-    const newBudgets = [...otherBudgets, { categoryId: 'savings', amount: savingsAmount }];
+    const newBudgets: Budget[] = [...otherBudgets, { categoryId: 'savings', amount: savingsAmount }];
 
     try {
-      await setBudgets(newBudgets);
+      await setBudgets(newBudgets, 0);
       toast({ title: "Savings Updated", description: "Your savings allocation has been saved." });
     } catch (error) {
       toast({ variant: "destructive", title: "Save Failed", description: "Could not save your savings budget." });
@@ -43,9 +47,8 @@ export function SavingsBudget() {
       setIsSaving(false);
     }
   };
-
-  const currentSpendable = allowance - totalSpent;
-  const maxSavings = currentSpendable > 0 ? currentSpendable : 0;
+  
+  const spendableWithoutSavings = remainingBalance + (savingsBudget?.amount ?? 0);
 
   if (isLoading) {
     return (
@@ -86,7 +89,7 @@ export function SavingsBudget() {
           />
         </div>
         <p className="text-xs text-muted-foreground">
-            Current Spendable Balance: {currencyFormatter.format(currentSpendable)}
+            Current Spendable Balance: {currencyFormatter.format(spendableWithoutSavings)}
         </p>
         <p className="text-xs text-muted-foreground">
             Remaining for planning after savings: {currencyFormatter.format(remainingBalance)}

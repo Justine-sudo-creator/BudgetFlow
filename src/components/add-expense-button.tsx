@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -6,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTr
 import { ExpenseForm } from "@/components/expense-form";
 import { Plus } from "lucide-react";
 import type { Expense } from "@/lib/types";
+import { ScrollArea } from "./ui/scroll-area";
 
 export function AddExpenseButton({ expenseToEdit }: { expenseToEdit?: Expense }) {
   const [open, setOpen] = useState(false);
@@ -28,7 +30,11 @@ export function AddExpenseButton({ expenseToEdit }: { expenseToEdit?: Expense })
             {expenseToEdit ? 'Update the details of your expense.' : 'Log a new expense to track your spending.'}
           </SheetDescription>
         </SheetHeader>
-        <ExpenseForm expenseToEdit={expenseToEdit} afterSubmit={() => setOpen(false)} />
+        <ScrollArea className="h-[calc(100vh-8rem)]">
+            <div className="p-4">
+                <ExpenseForm expenseToEdit={expenseToEdit} afterSubmit={() => setOpen(false)} />
+            </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

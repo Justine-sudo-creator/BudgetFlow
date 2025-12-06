@@ -16,6 +16,10 @@
         },
         "budgetTarget": {
           "$ref": "#/entities/BudgetTarget"
+        },
+        "balanceAtBudgetSet": {
+            "type": "number",
+            "description": "The remaining balance at the time the last budget plan was saved."
         }
       },
       "required": [
@@ -79,15 +83,15 @@
     "Budget": {
       "title": "Budget",
       "type": "object",
-      "description": "Represents a budget for a specific category.",
+      "description": "Represents a budget for a specific category. This can be a fixed amount or a percentage of the remaining spendable balance.",
       "properties": {
         "amount": {
           "type": "number",
-          "description": "The budget amount for the category."
+          "description": "The allocated amount for this category."
         },
         "percentage": {
           "type": "number",
-          "description": "The allocated percentage for this category from the remaining spendable balance."
+          "description": "The allocated percentage for this category. Used for planning."
         }
       },
       "required": [
