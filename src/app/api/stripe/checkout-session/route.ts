@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
     // Dynamically construct the application URL from request headers
     const headers = req.headers;
     const protocol = headers.get('x-forwarded-proto') || 'http';
-    const host = headers.get('host') || process.env.NEXT_PUBLIC_APP_URL || 'localhost:3000';
+    // Use x-forwarded-host on Vercel, fallback to host header
+    const host = headers.get('x-forwarded-host') || headers.get('host') || 'localhost:3000';
     const appUrl = `${protocol}://${host}`;
 
 
