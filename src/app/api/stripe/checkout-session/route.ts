@@ -22,7 +22,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : process.env.NEXT_PUBLIC_APP_URL;
+
+    if (!appUrl) {
+      throw new Error("Application URL is not configured. Please set NEXT_PUBLIC_APP_URL or ensure VERCEL_URL is available.");
+    }
 
     const checkoutSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
