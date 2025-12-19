@@ -1,14 +1,10 @@
 
 import Stripe from 'stripe';
-import 'dotenv/config';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-    // In a real app, you'd want to throw an error, but for the sandbox
-    // we'll just log a warning to avoid crashing the server.
-    console.warn('STRIPE_SECRET_KEY is not set in the environment variables.');
-}
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+// This is the correct way to initialize the Stripe client.
+// It will read the environment variable at runtime.
+// The exclamation mark tells TypeScript that we are sure this variable will be present.
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
     apiVersion: '2024-06-20',
     typescript: true,
 });

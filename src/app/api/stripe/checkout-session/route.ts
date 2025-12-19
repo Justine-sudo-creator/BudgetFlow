@@ -1,7 +1,7 @@
 
 import { NextResponse, NextRequest } from 'next/server';
-import { stripe } from '@/lib/stripe';
 import { z } from 'zod';
+import { stripe } from '@/lib/stripe'; // Import the shared Stripe client
 
 const checkoutSchema = z.object({
   userId: z.string(),
@@ -16,7 +16,7 @@ const checkoutSchema = z.object({
 // 3. In the "Pricing" section, you'll see a Price ID that looks like: price_1P...
 // 4. Copy that ID and paste it here, replacing the placeholder.
 // =================================================================
-const PREMIUM_PRICE_ID = 'price_1SfyC0J3LMhAU9mdantIW1WZ'; 
+const PREMIUM_PRICE_ID = 'price_1SfyC0J3LMhAU9mdantIW1WZ';
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,11 +27,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
     }
 
-    // Use the environment variable for the app URL.
-    // This is more reliable than constructing from headers.
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
     if (!appUrl) {
+      // This will now provide a clear error if the variable is missing in Vercel.
       throw new Error("NEXT_PUBLIC_APP_URL is not set in your environment variables.");
     }
     
@@ -67,7 +66,6 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-    // Check for Stripe-specific error structure
     const errorMessage = (error as any).message || 'An unknown error occurred';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
