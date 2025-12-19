@@ -1,7 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import { headers } from 'next/headers';
 import { stripe } from '@/lib/stripe';
 import * as admin from 'firebase-admin';
 
@@ -31,7 +30,7 @@ const firestore = admin.firestore();
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
-  const signature = headers().get('stripe-signature') as string;
+  const signature = req.headers.get('stripe-signature') as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
 
   if (!webhookSecret) {
