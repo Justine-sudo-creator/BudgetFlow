@@ -27,16 +27,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
     }
 
-    // Dynamically construct the application URL from request headers
-    const headers = req.headers;
-    const protocol = headers.get('x-forwarded-proto') || 'http';
-    // Use x-forwarded-host on Vercel, fallback to host header
-    const host = headers.get('x-forwarded-host') || headers.get('host') || 'localhost:3000';
-    const appUrl = `${protocol}://${host}`;
-
+    // Use the environment variable for the app URL.
+    // This is more reliable than constructing from headers.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     if (!appUrl) {
-      throw new Error("Application URL could not be determined.");
+      throw new Error("NEXT_PUBLIC_APP_URL is not set in your environment variables.");
     }
     
     // Check if the placeholder Price ID is still being used.
