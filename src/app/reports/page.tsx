@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategorySpendingReport } from "@/components/reports/category-spending-report";
 import { AllExpenses } from "@/components/reports/all-expenses";
 import { AllIncome } from "@/components/reports/all-income";
+import { ExpenseExporter } from "@/components/expense-exporter";
 
 type ReportPeriod = 'daily' | 'weekly' | 'monthly';
 
@@ -26,6 +27,9 @@ export default function ReportsPage() {
         <h1 className="text-3xl font-bold tracking-tight font-headline">
           Reports
         </h1>
+        <div className="flex items-center space-x-2">
+            <ExpenseExporter />
+        </div>
       </div>
       <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
         <Card className="lg:col-span-2">
