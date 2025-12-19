@@ -24,6 +24,7 @@ const createNewUserDocument = (userCredential: UserCredential): Promise<void> =>
             email: user.email,
             allowance: 0,
             budgetTarget: { amount: 0, period: 'daily' },
+            subscriptionTier: 'free',
         };
         // This is a crucial, blocking write on first login.
         return setDoc(userDocRef, initialUserData);

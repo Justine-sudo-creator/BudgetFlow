@@ -2,6 +2,7 @@
 
 
 
+
 "use client";
 
 import React, {
@@ -53,6 +54,8 @@ interface BudgetContextType {
   deleteSinkingFund: (id: string) => void;
   allocateToSinkingFund: (id: string, amount: number) => void;
   spendFromSinkingFund: (sinkingFundId: string, categoryId: string) => void;
+  subscriptionTier: 'free' | 'premium';
+  setSubscriptionTier: (tier: 'free' | 'premium') => void;
   totalSpent: number;
   remainingBalance: number;
   balanceAtBudgetSet: number;
@@ -116,6 +119,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const allowance = userData?.allowance ?? 0;
   const budgetTarget = userData?.budgetTarget ?? { amount: 0, period: 'daily' };
   const balanceAtBudgetSet = userData?.balanceAtBudgetSet ?? 0;
+  const subscriptionTier = userData?.subscriptionTier ?? 'free';
 
 
   const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading || sinkingFundsLoading || recurringExpensesLoading;
@@ -125,6 +129,11 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const setAllowance = useCallback((amount: number) => {
     if (!userDocRef) return;
     updateDocumentNonBlocking(userDocRef, { allowance: amount });
+  }, [userDocRef]);
+
+  const setSubscriptionTier = useCallback((tier: 'free' | 'premium') => {
+    if (!userDocRef) return;
+    updateDocumentNonBlocking(userDocRef, { subscriptionTier: tier });
   }, [userDocRef]);
 
   const setBudgetTarget = useCallback((target: BudgetTarget) => {
@@ -506,6 +515,8 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
     deleteSinkingFund,
     allocateToSinkingFund,
     spendFromSinkingFund,
+    subscriptionTier,
+    setSubscriptionTier,
     totalSpent,
     remainingBalance,
     balanceAtBudgetSet,

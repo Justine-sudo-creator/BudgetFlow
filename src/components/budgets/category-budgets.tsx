@@ -18,6 +18,8 @@ import { subDays, parseISO, format } from "date-fns";
 import { Textarea } from "../ui/textarea";
 import { Progress } from "../ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { useUser } from "@/firebase";
+import { loadStripe } from "@stripe/stripe-js";
 
 const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -33,14 +35,18 @@ const typeVariant: Record<CategoryType, "default" | "secondary" | "outline"> = {
 export function CategoryBudgets() {
   const { 
     allowance, categories, budgets, getSpentForCategory, expenses, isLoading, 
-    remainingBalance, sinkingFunds, setBudgets, balanceAtBudgetSet, resetBudgetPlan 
+    remainingBalance, sinkingFunds, setBudgets, balanceAtBudgetSet, resetBudgetPlan,
+    subscriptionTier 
   } = useBudget();
+  const { user } = useUser();
   const [localPercentages, setLocalPercentages] = useState<Record<string, number>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [userContext, setUserContext] = useState("");
   
   const { toast } = useToast();
+  
+  const isPremium = subscriptionTier === 'premium';
 
   const spendCategories = useMemo(() => categories.filter(c => c.type !== 'savings'), [categories]);
   const savingsBudgetAmount = useMemo(() => budgets.find(b => b.categoryId === 'savings')?.amount ?? 0, [budgets]);
@@ -144,26 +150,10 @@ export function CategoryBudgets() {
     }
   }
 
-  const handleGetBudgetAllocation = async () => {
-    if (allowance <= 0) {
-        toast({
-            variant: "destructive",
-            title: "Set Allowance First",
-            description: "You need to set your total allowance before the AI can create a budget.",
-        });
-        return;
-    }
-     if (isPlanActive) {
-        toast({
-            variant: "destructive",
-            title: "Plan is Active",
-            description: "Please reset your current budget plan before generating a new one.",
-        });
-        return;
-    }
-    setIsGenerating(true);
-    setSuggestion(null);
-    try {
+  const handleGenerateAI = async () => {
+      setIsGenerating(true);
+      setSuggestion(null);
+      try {
         const thirtyDaysAgo = subDays(new Date(), 30);
         const recentExpenses = expenses
             .filter(e => parseISO(e.date) >= thirtyDaysAgo)
@@ -200,14 +190,81 @@ export function CategoryBudgets() {
             description: "The AI has suggested a budget for you. Review and save it.",
         });
 
-    } catch (error) {
-        console.error("Failed to get budget allocation", error);
+      } catch (error) {
+          console.error("Failed to get budget allocation", error);
+          toast({
+              variant: "destructive",
+              title: "AI Error",
+              description: "Sorry, I couldn't generate a budget right now. Please try again.",
+          });
+      } finally {
+          setIsGenerating(false);
+      }
+  }
+
+  const handleGetBudgetAllocation = async () => {
+    if (allowance <= 0) {
         toast({
             variant: "destructive",
-            title: "AI Error",
-            description: "Sorry, I couldn't generate a budget right now. Please try again.",
+            title: "Set Allowance First",
+            description: "You need to set your total allowance before the AI can create a budget.",
         });
-    } finally {
+        return;
+    }
+     if (isPlanActive) {
+        toast({
+            variant: "destructive",
+            title: "Plan is Active",
+            description: "Please reset your current budget plan before generating a new one.",
+        });
+        return;
+    }
+
+    if (!isPremium) {
+      toast({
+          title: "Premium Feature",
+          description: "The AI Budget Planner is a premium feature. Please upgrade to use it.",
+      });
+      return;
+    }
+    
+    // For premium users, this is a one-time purchase.
+    if (!user) {
+        toast({ variant: 'destructive', title: "Not logged in", description: "You must be logged in." });
+        return;
+    }
+    setIsGenerating(true);
+    try {
+        const res = await fetch('/api/stripe/checkout-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.uid }),
+        });
+
+        if (!res.ok) {
+            const { error } = await res.json();
+            throw new Error(error || 'Failed to create checkout session.');
+        }
+
+        const { sessionId } = await res.json();
+        const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+        
+        if (!stripe) throw new Error('Stripe.js failed to load.');
+
+        const { error } = await stripe.redirectToCheckout({ sessionId });
+        if (error) throw error;
+        // If checkout is successful, the webhook will handle the logic. 
+        // For now, we'll simulate the AI generation after this call.
+        // In a real app, you might wait for a webhook confirmation before enabling generation.
+        await handleGenerateAI();
+
+
+    } catch (error: any) {
+        toast({
+            variant: "destructive",
+            title: "Payment Failed",
+            description: error.message || "Could not initiate payment. Please try again.",
+        });
         setIsGenerating(false);
     }
   };
@@ -244,7 +301,12 @@ export function CategoryBudgets() {
       <Card className="mb-6">
           <CardHeader>
               <CardTitle>AI Budget Planner</CardTitle>
-              <CardDescription>Let AI create a balanced budget for your remaining funds. It works best when you don't have a plan set.</CardDescription>
+              <CardDescription>
+                {isPremium 
+                    ? "Purchase a one-time AI budget plan for your remaining funds."
+                    : "Upgrade to Premium to unlock the AI Budget Planner."
+                }
+              </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div>
@@ -255,16 +317,17 @@ export function CategoryBudgets() {
                       value={userContext}
                       onChange={(e) => setUserContext(e.target.value)}
                       className="mt-1"
-                      disabled={isPlanActive}
+                      disabled={isPlanActive || !isPremium}
                   />
               </div>
-              <Button onClick={handleGetBudgetAllocation} disabled={isGenerating || allowance <= 0 || isPlanActive} className="w-full">
-                  {isGenerating ? "Generating..." : (
+              <Button onClick={handleGetBudgetAllocation} disabled={isGenerating || allowance <= 0 || isPlanActive || !isPremium} className="w-full">
+                  {isGenerating ? "Processing..." : (
                       <>
                           <Sparkles className="mr-2 h-4 w-4" />
-                          {allowance <= 0 && "Set Allowance to Enable AI"}
-                          {allowance > 0 && isPlanActive && "Reset Plan to Generate New AI Budget"}
-                          {allowance > 0 && !isPlanActive && "Generate AI Budget Plan"}
+                          {!isPremium && "Upgrade to Use AI Planner"}
+                          {isPremium && allowance <= 0 && "Set Allowance to Enable AI"}
+                          {isPremium && isPlanActive && "Reset Plan to Generate New AI Budget"}
+                          {isPremium && !isPlanActive && "Generate AI Budget Plan (One-Time Purchase)"}
                       </>
                   )}
               </Button>

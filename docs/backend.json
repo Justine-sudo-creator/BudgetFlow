@@ -20,6 +20,11 @@
         "balanceAtBudgetSet": {
             "type": "number",
             "description": "The remaining balance at the time the last budget plan was saved."
+        },
+        "subscriptionTier": {
+            "type": "string",
+            "enum": ["free", "premium"],
+            "description": "The user's subscription tier."
         }
       },
       "required": [

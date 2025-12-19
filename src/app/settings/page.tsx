@@ -1,3 +1,4 @@
+
 "use client";
 
 import { RecurringExpenses } from "@/components/settings/recurring-expenses";
@@ -18,3 +19,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    

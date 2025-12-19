@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -37,6 +38,10 @@ import { AddIncomeButton } from "./add-income-button";
 import { useAuth, useUser } from "@/firebase";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Skeleton } from "./ui/skeleton";
+import { useBudget } from "@/hooks/use-budget";
+import { Badge } from "./ui/badge";
+import { loadStripe } from "@stripe/stripe-js";
+import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -50,6 +55,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
+  const { subscriptionTier } = useBudget(); 
+  const [isUpgrading, setIsUpgrading] = React.useState(false);
 
   React.useEffect(() => {
     if (!isUserLoading && !user) {
@@ -60,15 +68,52 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleSignOut = async () => {
     if (auth) {
       await auth.signOut();
-      // Force a reload to clear all state and redirect to login
       window.location.href = '/login';
     }
   };
+  
+  const handleUpgrade = async () => {
+    if (!user) {
+        toast({ variant: 'destructive', title: "Not logged in", description: "You must be logged in to upgrade." });
+        return;
+    }
+    setIsUpgrading(true);
+    try {
+        const res = await fetch('/api/stripe/checkout-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.uid }),
+        });
 
-  // Don't render the shell on the login page
+        if (!res.ok) {
+            const { error } = await res.json();
+            throw new Error(error || 'Failed to create checkout session.');
+        }
+
+        const { sessionId } = await res.json();
+        const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+        
+        if (!stripe) throw new Error('Stripe.js failed to load.');
+
+        const { error } = await stripe.redirectToCheckout({ sessionId });
+        if (error) throw error;
+        
+    } catch (error: any) {
+        toast({
+            variant: "destructive",
+            title: "Upgrade Failed",
+            description: error.message || "Could not initiate upgrade. Please try again.",
+        });
+    } finally {
+        setIsUpgrading(false);
+    }
+  };
+
   if (pathname === '/login') {
     return <>{children}</>;
   }
+  
+  const isPremium = subscriptionTier === 'premium';
 
   return (
     <SidebarProvider>
@@ -112,16 +157,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       {user.isAnonymous ? 'A' : user.email?.[0].toUpperCase() ?? <UserIcon size={16} />}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="group-data-[collapsible=icon]:hidden truncate">
-                    {user.isAnonymous ? 'Anonymous' : user.email}
-                  </span>
+                  <div className="flex flex-col items-start truncate">
+                    <span className="group-data-[collapsible=icon]:hidden truncate">
+                      {user.isAnonymous ? 'Anonymous' : user.email}
+                    </span>
+                    {isPremium && !user.isAnonymous && (
+                        <Badge variant="secondary" className="h-5 px-1.5 text-xs font-normal group-data-[collapsible=icon]:hidden">
+                            Premium
+                        </Badge>
+                    )}
+                  </div>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56 mb-2" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
-                  {user.isAnonymous ? 'Anonymous User' : user.email}
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user.isAnonymous ? 'Anonymous User' : user.email}</p>
+                    {isPremium && !user.isAnonymous && <p className="text-xs leading-none text-muted-foreground">Premium Member</p>}
+                  </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {!isPremium && !user.isAnonymous && (
+                    <>
+                        <DropdownMenuItem onSelect={handleUpgrade} disabled={isUpgrading}>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            <span>{isUpgrading ? 'Redirecting...' : 'Upgrade to Premium'}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                    </>
+                )}
                 <DropdownMenuItem asChild>
                   <Link href="/settings">
                     <Settings className="mr-2 h-4 w-4" />

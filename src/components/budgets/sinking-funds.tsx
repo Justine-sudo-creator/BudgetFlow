@@ -8,7 +8,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, PiggyBank, Edit, ShoppingCart } from "lucide-react";
+import { Plus, Trash2, PiggyBank, Edit, ShoppingCart, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,8 @@ import type { SinkingFund, Category } from "@/lib/types";
 import { Progress } from "../ui/progress";
 import { Skeleton } from "../ui/skeleton";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../ui/select";
+import { useUser } from "@/firebase";
+import { loadStripe } from '@stripe/stripe-js';
 
 
 const currencyFormatter = new Intl.NumberFormat("en-PH", {
@@ -191,11 +193,62 @@ function SpendFromFundForm({ fund, onSave }: { fund: SinkingFund, onSave: () => 
 }
 
 export function SinkingFunds() {
-  const { sinkingFunds, deleteSinkingFund, isLoading } = useBudget();
+  const { sinkingFunds, deleteSinkingFund, isLoading, subscriptionTier, setSubscriptionTier } = useBudget();
+  const { user } = useUser();
   const [openDialogs, setOpenDialogs] = useState<Record<string, boolean>>({});
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  
+  const isPremium = subscriptionTier === 'premium';
+  const freeTierLimit = 2;
+  const atFreeLimit = !isPremium && (sinkingFunds?.length ?? 0) >= freeTierLimit;
 
   const handleOpenChange = (dialogId: string, open: boolean) => {
       setOpenDialogs(prev => ({ ...prev, [dialogId]: open }));
+  }
+  
+  const { toast } = useToast();
+  
+  const handleUpgrade = async () => {
+    if (!user) {
+        toast({ variant: 'destructive', title: "Not logged in", description: "You must be logged in to upgrade." });
+        return;
+    }
+    setIsUpgrading(true);
+    try {
+        const res = await fetch('/api/stripe/checkout-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userId: user.uid }),
+        });
+
+        if (!res.ok) {
+            const { error } = await res.json();
+            throw new Error(error || 'Failed to create checkout session.');
+        }
+
+        const { sessionId } = await res.json();
+        const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+        
+        if (!stripe) {
+            throw new Error('Stripe.js failed to load.');
+        }
+
+        const { error } = await stripe.redirectToCheckout({ sessionId });
+        if (error) {
+            throw error;
+        }
+
+    } catch (error: any) {
+        toast({
+            variant: "destructive",
+            title: "Upgrade Failed",
+            description: error.message || "Could not initiate the upgrade process. Please try again.",
+        });
+    } finally {
+        setIsUpgrading(false);
+    }
   }
 
   if (isLoading) {
@@ -222,7 +275,7 @@ export function SinkingFunds() {
         <CardDescription>Set aside money for specific savings goals.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {sinkingFunds.length === 0 ? (
+        {!sinkingFunds || sinkingFunds.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No sinking funds yet. Add one to start saving for a goal!</p>
         ) : (
           sinkingFunds.map(fund => {
@@ -306,11 +359,25 @@ export function SinkingFunds() {
             );
           })
         )}
+        {atFreeLimit && (
+            <div className="p-4 text-center bg-accent/50 rounded-lg border-2 border-dashed border-primary/30 space-y-2">
+                <h4 className="font-semibold text-primary">Want More Sinking Funds?</h4>
+                <p className="text-sm text-muted-foreground">The free plan is limited to {freeTierLimit} funds. Upgrade to Premium for unlimited funds!</p>
+                <Button onClick={handleUpgrade} disabled={isUpgrading} size="sm">
+                    {isUpgrading ? "Redirecting..." : (
+                        <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Upgrade to Premium
+                        </>
+                    )}
+                </Button>
+            </div>
+        )}
       </CardContent>
       <CardFooter>
         <Dialog open={openDialogs['add-new']} onOpenChange={(open) => handleOpenChange('add-new', open)}>
             <DialogTrigger asChild>
-                <Button className="w-full">
+                <Button className="w-full" disabled={atFreeLimit}>
                     <Plus className="mr-2 h-4 w-4" /> Add Sinking Fund
                 </Button>
             </DialogTrigger>
@@ -326,5 +393,3 @@ export function SinkingFunds() {
     </Card>
   );
 }
-
-    
