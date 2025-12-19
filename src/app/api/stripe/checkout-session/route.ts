@@ -11,7 +11,7 @@ const checkoutSchema = z.object({
 // You need to create a product and a price in your Stripe dashboard.
 // For this example, we'll use a placeholder.
 // REPALCE THIS with your actual price ID from Stripe.
-const PREMIUM_PRICE_ID = 'price_1PREMIUMPLANID'; 
+const PREMIUM_PRICE_ID = 'price_1SfyC0J3LMhAU9mdantIW1WZ'; 
 
 export async function POST(req: NextRequest) {
   try {
