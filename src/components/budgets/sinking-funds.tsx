@@ -180,7 +180,7 @@ function SpendFromFundForm({ fund, onSave }: { fund: SinkingFund, onSave: () => 
                 </Select>
             </div>
              <p className="text-xs text-muted-foreground">
-                This will create an expense of {currencyFormatter.format(fund.currentAmount)} and delete the fund.
+                This will create an expense of ${currencyFormatter.format(fund.currentAmount)} and delete the fund.
              </p>
             <DialogFooter>
                 <DialogClose asChild>
