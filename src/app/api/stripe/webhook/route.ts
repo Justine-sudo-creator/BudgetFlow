@@ -3,20 +3,48 @@ import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { headers } from 'next/headers';
 import { stripe } from '@/lib/stripe';
-import { initializeFirebase } from '@/firebase/initializer';
-import { doc, updateDoc } from 'firebase/firestore';
+import * as admin from 'firebase-admin';
+
+// =================================================================
+// Initialize Firebase Admin SDK
+// =================================================================
+// Check if the app is already initialized to prevent errors
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        // The private key must be properly formatted.
+        // Vercel escapes newlines, so we need to replace them.
+        privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+      }),
+    });
+  } catch (error: any) {
+    console.error('Firebase Admin Initialization Error:', error.message);
+  }
+}
+
+const firestore = admin.firestore();
+// =================================================================
+
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
-  const signature = (await headers()).get('stripe-signature') as string;
+  const signature = headers().get('stripe-signature') as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
+
+  if (!webhookSecret) {
+    console.error('Webhook Error: STRIPE_WEBHOOK_SECRET is not set.');
+    return NextResponse.json({ error: 'Webhook secret is not configured.' }, { status: 500 });
+  }
 
   let event: Stripe.Event;
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err: any) {
-    console.error(`❌ Error message: ${err.message}`);
+    console.error(`❌ Webhook signature verification failed: ${err.message}`);
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
 
@@ -31,16 +59,14 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      // Initialize a server-side firestore instance to update user data
-      const { firestore } = initializeFirebase();
-      const userDocRef = doc(firestore, 'users', userId);
+      const userDocRef = firestore.collection('users').doc(userId);
 
-      // Update the user's subscription tier to 'premium'
-      await updateDoc(userDocRef, {
+      // Use the Admin SDK to update the user's subscription tier to 'premium'
+      await userDocRef.update({
         subscriptionTier: 'premium',
       });
       
-      console.log(`Successfully upgraded user ${userId} to premium.`);
+      console.log(`Successfully upgraded user ${userId} to premium via webhook.`);
 
     } catch (dbError: any) {
       console.error(`Database update failed for user ${userId}:`, dbError);

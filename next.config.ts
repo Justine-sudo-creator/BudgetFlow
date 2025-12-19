@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   env: {
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
+    FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL,
+    FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY,
   },
   typescript: {
     ignoreBuildErrors: true,
