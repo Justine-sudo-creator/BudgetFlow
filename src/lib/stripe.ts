@@ -1,5 +1,6 @@
 
 import Stripe from 'stripe';
+import 'dotenv/config';
 
 if (!process.env.STRIPE_SECRET_KEY) {
     // In a real app, you'd want to throw an error, but for the sandbox
