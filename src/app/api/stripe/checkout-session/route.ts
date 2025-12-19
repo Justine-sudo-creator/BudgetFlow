@@ -20,34 +20,32 @@ const PREMIUM_PRICE_ID = 'price_1SfyC0J3LMhAU9mdantIW1WZ';
 
 export async function POST(req: NextRequest) {
   try {
+    // --- Start Enhanced Validation ---
+    const apiKey = process.env.STRIPE_SECRET_KEY;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+    if (!apiKey) {
+      throw new Error("Stripe Checkout Error: STRIPE_SECRET_KEY is not set in environment variables.");
+    }
+    if (!appUrl) {
+      throw new Error("Stripe Checkout Error: NEXT_PUBLIC_APP_URL is not set in environment variables.");
+    }
+    // --- End Enhanced Validation ---
+
     const body = await req.json();
     const { userId } = checkoutSchema.parse(body);
     
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-
-    if (!appUrl) {
-      throw new Error("NEXT_PUBLIC_APP_URL is not set in your environment variables.");
-    }
-
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
     }
     
-    // Check if the placeholder Price ID is still being used.
     if (PREMIUM_PRICE_ID.includes('REPLACE_WITH_YOUR_ACTUAL_PRICE_ID')) {
-        console.error("Stripe Price ID has not been replaced. Please update it in the code.");
         return NextResponse.json(
             { error: 'Stripe is not configured correctly. Missing Price ID.' },
             { status: 500 }
         );
     }
     
-    // Ensure the secret key is available at runtime
-    const apiKey = process.env.STRIPE_SECRET_KEY;
-    if (!apiKey) {
-      throw new Error("STRIPE_SECRET_KEY is not set in environment variables.");
-    }
-
     const checkoutSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -63,18 +61,22 @@ export async function POST(req: NextRequest) {
         userId: userId,
       },
     }, {
-        // Pass the API key as a runtime option for serverless environments
         apiKey: apiKey
     });
 
     return NextResponse.json({ sessionId: checkoutSession.id });
 
   } catch (error) {
-    console.error("Stripe Checkout Error:", error);
+    // Log a more helpful error message
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    console.error(`--- STRIPE CHECKOUT CRITICAL ERROR ---`);
+    console.error(`Error: ${errorMessage}`);
+    console.error("Full Error Object:", JSON.stringify(error, null, 2));
+    
     if (error instanceof z.ZodError) {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
-    const errorMessage = (error as any).message || 'An unknown error occurred';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+
+    return NextResponse.json({ error: `Server Error: ${errorMessage}` }, { status: 500 });
   }
 }
