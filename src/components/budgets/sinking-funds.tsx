@@ -229,7 +229,15 @@ export function SinkingFunds() {
         }
 
         const { sessionId } = await res.json();
-        const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+        
+        const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+        if (!publishableKey) {
+            throw new Error("Stripe publishable key is not set in environment variables.");
+        }
+        
+        console.log(`Initializing Stripe with publishable key: ${publishableKey.substring(0, 10)}...`);
+
+        const stripe = await loadStripe(publishableKey);
         
         if (!stripe) {
             throw new Error('Stripe.js failed to load.');
@@ -237,7 +245,8 @@ export function SinkingFunds() {
 
         const { error } = await stripe.redirectToCheckout({ sessionId });
         if (error) {
-            throw error;
+            console.error("Stripe redirectToCheckout error:", error);
+            throw new Error(`An error occurred with our connection to Stripe: ${error.message}`);
         }
 
     } catch (error: any) {

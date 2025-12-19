@@ -247,12 +247,23 @@ export function CategoryBudgets() {
         }
 
         const { sessionId } = await res.json();
-        const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+        
+        const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+        if (!publishableKey) {
+            throw new Error("Stripe publishable key is not set in environment variables.");
+        }
+        
+        console.log(`Initializing Stripe with publishable key: ${publishableKey.substring(0, 10)}...`);
+
+        const stripe = await loadStripe(publishableKey);
         
         if (!stripe) throw new Error('Stripe.js failed to load.');
 
         const { error } = await stripe.redirectToCheckout({ sessionId });
-        if (error) throw error;
+        if (error) {
+            console.error("Stripe redirectToCheckout error:", error);
+            throw new Error(`An error occurred with our connection to Stripe: ${error.message}`);
+        }
         // If checkout is successful, the webhook will handle the logic. 
         // For now, we'll simulate the AI generation after this call.
         // In a real app, you might wait for a webhook confirmation before enabling generation.
