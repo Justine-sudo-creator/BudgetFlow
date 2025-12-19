@@ -7,10 +7,15 @@ const checkoutSchema = z.object({
   userId: z.string(),
 });
 
-// This is the price ID for your premium plan product in Stripe.
-// You need to create a product and a price in your Stripe dashboard.
-// For this example, we'll use a placeholder.
-// REPALCE THIS with your actual price ID from Stripe.
+// =================================================================
+// IMPORTANT: Replace this with your actual Stripe Price ID
+// =================================================================
+// You can find your Price ID in the Stripe Dashboard.
+// 1. Go to the "Products" section.
+// 2. Click on the product you want to sell (e.g., "Premium Plan").
+// 3. In the "Pricing" section, you'll see a Price ID that looks like: price_1P...
+// 4. Copy that ID and paste it here, replacing the placeholder.
+// =================================================================
 const PREMIUM_PRICE_ID = 'price_1SfyC0J3LMhAU9mdantIW1WZ'; 
 
 export async function POST(req: NextRequest) {
@@ -22,12 +27,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
     }
 
-    const appUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : process.env.NEXT_PUBLIC_APP_URL;
+    // Dynamically construct the application URL from request headers
+    const headers = req.headers;
+    const protocol = headers.get('x-forwarded-proto') || 'http';
+    const host = headers.get('host') || process.env.NEXT_PUBLIC_APP_URL || 'localhost:3000';
+    const appUrl = `${protocol}://${host}`;
+
 
     if (!appUrl) {
-      throw new Error("Application URL is not configured. Please set NEXT_PUBLIC_APP_URL or ensure VERCEL_URL is available.");
+      throw new Error("Application URL could not be determined.");
+    }
+    
+    // Check if the placeholder Price ID is still being used.
+    if (PREMIUM_PRICE_ID.includes('REPLACE_WITH_YOUR_ACTUAL_PRICE_ID')) {
+        console.error("Stripe Price ID has not been replaced. Please update it in the code.");
+        return NextResponse.json(
+            { error: 'Stripe is not configured correctly. Missing Price ID.' },
+            { status: 500 }
+        );
     }
 
     const checkoutSession = await stripe.checkout.sessions.create({
