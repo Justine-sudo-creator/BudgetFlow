@@ -20,18 +20,29 @@ const PREMIUM_PRICE_ID = 'price_1SfyC0J3LMhAU9mdantIW1WZ';
 
 export async function POST(req: NextRequest) {
   try {
-    // --- Start Enhanced Validation ---
-    const apiKey = process.env.STRIPE_SECRET_KEY;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const apiKey = process.env.STRIPE_SECRET_KEY?.trim();
 
     if (!apiKey) {
-      throw new Error("Stripe Checkout Error: STRIPE_SECRET_KEY is not set in environment variables.");
+      console.error("--- STRIPE CHECKOUT CRITICAL ERROR ---");
+      console.error("Stripe Checkout Error: STRIPE_SECRET_KEY is not set or is empty in environment variables.");
+      return NextResponse.json({ error: 'Server Configuration Error: Stripe secret key not set.' }, { status: 500 });
     }
     if (!appUrl) {
-      throw new Error("Stripe Checkout Error: NEXT_PUBLIC_APP_URL is not set in environment variables.");
+        console.error("--- STRIPE CHECKOUT CRITICAL ERROR ---");
+        console.error("Stripe Checkout Error: NEXT_PUBLIC_APP_URL is not set in environment variables.");
+        return NextResponse.json({ error: 'Server Configuration Error: App URL not set.' }, { status: 500 });
     }
-    // --- End Enhanced Validation ---
-
+    
+    if (PREMIUM_PRICE_ID.includes('REPLACE_WITH_YOUR_ACTUAL_PRICE_ID')) {
+        console.error("--- STRIPE CHECKOUT CRITICAL ERROR ---");
+        console.error("Stripe Checkout Error: PREMIUM_PRICE_ID is not configured.");
+        return NextResponse.json(
+            { error: 'Stripe is not configured correctly. Missing Price ID.' },
+            { status: 500 }
+        );
+    }
+    
     const body = await req.json();
     const { userId } = checkoutSchema.parse(body);
     
@@ -39,12 +50,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
     }
     
-    if (PREMIUM_PRICE_ID.includes('REPLACE_WITH_YOUR_ACTUAL_PRICE_ID')) {
-        return NextResponse.json(
-            { error: 'Stripe is not configured correctly. Missing Price ID.' },
-            { status: 500 }
-        );
-    }
+    console.log(`--- STRIPE CHECKOUT INITIATED ---`);
+    console.log(`User ID: ${userId}`);
+    console.log(`App URL: ${appUrl}`);
+    console.log(`Using Price ID: ${PREMIUM_PRICE_ID}`);
     
     const checkoutSession = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -64,10 +73,11 @@ export async function POST(req: NextRequest) {
         apiKey: apiKey
     });
 
+    console.log(`--- STRIPE CHECKOUT SESSION CREATED ---`);
+    console.log(`Session ID: ${checkoutSession.id}`);
     return NextResponse.json({ sessionId: checkoutSession.id });
 
   } catch (error) {
-    // Log a more helpful error message
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     console.error(`--- STRIPE CHECKOUT CRITICAL ERROR ---`);
     console.error(`Error: ${errorMessage}`);
