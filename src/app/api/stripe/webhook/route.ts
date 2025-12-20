@@ -8,14 +8,21 @@ import type { ServiceAccount } from 'firebase-admin';
 // Function to initialize Firebase Admin SDK.
 // This will be called only when the webhook is hit.
 const initializeFirebaseAdmin = () => {
+  // Check if the app is already initialized to prevent re-initialization errors.
   if (admin.apps.length > 0) {
     return admin.app();
   }
 
+  // Explicitly check each required environment variable.
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  // Vercel escapes newlines, so we need to replace them.
+  // Vercel escapes newlines in multiline env vars, so we must replace them.
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  // Log which variables are found or missing for debugging on Vercel.
+  if (!projectId) console.error("Webhook Error: FIREBASE_PROJECT_ID is not set in Vercel environment variables.");
+  if (!clientEmail) console.error("Webhook Error: FIREBASE_CLIENT_EMAIL is not set in Vercel environment variables.");
+  if (!privateKey) console.error("Webhook Error: FIREBASE_PRIVATE_KEY is not set in Vercel environment variables.");
 
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error('CRITICAL: Missing one or more required Firebase Admin SDK environment variables.');
