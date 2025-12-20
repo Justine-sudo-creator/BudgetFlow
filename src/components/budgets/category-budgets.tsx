@@ -219,18 +219,15 @@ export function CategoryBudgets() {
         });
         return;
     }
-
-    if (!isPremium) {
-      toast({
-          title: "Premium Feature",
-          description: "The AI Budget Planner is a premium feature. Please upgrade to use it.",
-      });
+    
+    if (isPremium) {
+      await handleGenerateAI();
       return;
     }
-    
-    // For premium users, this is a one-time purchase.
+
+    // --- Logic for non-premium users to upgrade ---
     if (!user) {
-        toast({ variant: 'destructive', title: "Not logged in", description: "You must be logged in." });
+        toast({ variant: 'destructive', title: "Not logged in", description: "You must be logged in to upgrade." });
         return;
     }
     setIsGenerating(true);
@@ -264,18 +261,14 @@ export function CategoryBudgets() {
             console.error("Stripe redirectToCheckout error:", error);
             throw new Error(`An error occurred with our connection to Stripe: ${error.message}`);
         }
-        // If checkout is successful, the webhook will handle the logic. 
-        // For now, we'll simulate the AI generation after this call.
-        // In a real app, you might wait for a webhook confirmation before enabling generation.
-        await handleGenerateAI();
-
 
     } catch (error: any) {
         toast({
             variant: "destructive",
-            title: "Payment Failed",
+            title: "Upgrade Failed",
             description: error.message || "Could not initiate payment. Please try again.",
         });
+    } finally {
         setIsGenerating(false);
     }
   };
@@ -314,7 +307,7 @@ export function CategoryBudgets() {
               <CardTitle>AI Budget Planner</CardTitle>
               <CardDescription>
                 {isPremium 
-                    ? "Purchase a one-time AI budget plan for your remaining funds."
+                    ? "Generate a new AI budget plan for your remaining funds."
                     : "Upgrade to Premium to unlock the AI Budget Planner."
                 }
               </CardDescription>
@@ -328,17 +321,19 @@ export function CategoryBudgets() {
                       value={userContext}
                       onChange={(e) => setUserContext(e.target.value)}
                       className="mt-1"
-                      disabled={isPlanActive || !isPremium}
+                      disabled={isPlanActive || isGenerating}
                   />
               </div>
-              <Button onClick={handleGetBudgetAllocation} disabled={isGenerating || allowance <= 0 || isPlanActive || !isPremium} className="w-full">
-                  {isGenerating ? "Processing..." : (
+              <Button onClick={handleGetBudgetAllocation} disabled={isGenerating || allowance <= 0 || isPlanActive} className="w-full">
+                  {isGenerating && !isPremium ? "Redirecting to payment..." : ""}
+                  {isGenerating && isPremium ? "Generating..." : ""}
+                  {!isGenerating && (
                       <>
                           <Sparkles className="mr-2 h-4 w-4" />
                           {!isPremium && "Upgrade to Use AI Planner"}
                           {isPremium && allowance <= 0 && "Set Allowance to Enable AI"}
                           {isPremium && isPlanActive && "Reset Plan to Generate New AI Budget"}
-                          {isPremium && !isPlanActive && "Generate AI Budget Plan (One-Time Purchase)"}
+                          {isPremium && !isPlanActive && !isGenerating && "Generate AI Budget Plan"}
                       </>
                   )}
               </Button>
@@ -466,3 +461,5 @@ export function CategoryBudgets() {
     </>
   );
 }
+
+    
