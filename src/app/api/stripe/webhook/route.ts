@@ -5,35 +5,39 @@ import { stripe } from '@/lib/stripe';
 import * as admin from 'firebase-admin';
 import type { ServiceAccount } from 'firebase-admin';
 
-// Initialize Firebase Admin SDK
-// This must be done once at the top level.
-if (admin.apps.length === 0) {
-  // Ensure all required environment variables are present before initializing.
+// Function to initialize Firebase Admin SDK.
+// This will be called only when the webhook is hit.
+const initializeFirebaseAdmin = () => {
+  if (admin.apps.length > 0) {
+    return admin.app();
+  }
+
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  // Vercel escapes newlines, so we need to replace them.
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
   if (!projectId || !clientEmail || !privateKey) {
-    console.error('CRITICAL: Missing one or more required Firebase Admin SDK environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY).');
-    // We can't throw here at the top level, but the app will fail later if it's not initialized.
-  } else {
-    try {
-      const serviceAccount: ServiceAccount = {
-        projectId,
-        clientEmail,
-        // The private key must be properly formatted. Vercel escapes newlines.
-        privateKey: privateKey.replace(/\\n/g, '\n'),
-      };
-
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log("Firebase Admin SDK initialized successfully.");
-    } catch (error: any) {
-      console.error('CRITICAL: Firebase Admin SDK initialization failed.', error.message);
-    }
+    throw new Error('CRITICAL: Missing one or more required Firebase Admin SDK environment variables.');
   }
-}
+
+  const serviceAccount: ServiceAccount = {
+    projectId,
+    clientEmail,
+    privateKey,
+  };
+
+  try {
+    const app = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("Firebase Admin SDK initialized successfully inside webhook.");
+    return app;
+  } catch (error: any) {
+    console.error('CRITICAL: Firebase Admin SDK initialization failed inside webhook.', error.message);
+    throw new Error('Firebase Admin SDK could not be initialized.');
+  }
+};
 
 export async function POST(req: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -42,15 +46,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Server configuration error: Webhook secret not set.' }, { status: 500 });
   }
 
-  // Stripe requires the raw body to construct the event.
   const rawBody = await req.arrayBuffer();
-  const body = Buffer.from(rawBody);
-  const signature = req.headers.get('stripe-signature') as string;
+  const signature = req.headers.get('stripe-signature');
+
+  if (!signature) {
+      return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
+  }
 
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(Buffer.from(rawBody), signature, webhookSecret);
   } catch (err: any) {
     console.error(`❌ Webhook signature verification failed: ${err.message}`);
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
@@ -58,7 +64,6 @@ export async function POST(req: NextRequest) {
   
   console.log(`Received Stripe webhook event: ${event.type}`);
 
-  // Handle the checkout.session.completed event
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
     
@@ -71,14 +76,12 @@ export async function POST(req: NextRequest) {
     console.log(`Processing checkout.session.completed for user: ${userId}`);
 
     try {
-      // Check if Firebase Admin was initialized
-      if (admin.apps.length === 0) {
-        throw new Error("Firebase Admin SDK is not initialized. Check server logs for initialization errors.");
-      }
+      // Initialize Firebase Admin SDK here, at runtime.
+      initializeFirebaseAdmin();
+      
       const firestore = admin.firestore();
       const userDocRef = firestore.collection('users').doc(userId);
 
-      // Use the Admin SDK to update the user's subscription tier to 'premium'
       await userDocRef.update({
         subscriptionTier: 'premium',
       });
