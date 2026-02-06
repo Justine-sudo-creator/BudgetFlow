@@ -28,7 +28,7 @@ import {
 } from "../ui/dropdown-menu";
 import { Skeleton } from "../ui/skeleton";
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
+const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
 });
@@ -105,7 +105,7 @@ export function RecentExpenses() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <AddExpenseButton expenseToEdit={expense} />
+                            <AddExpenseButton expenseToEdit={expense} isMenuItem />
                             <DropdownMenuItem
                               className="text-destructive"
                               onSelect={() => deleteExpense(expense.id)}

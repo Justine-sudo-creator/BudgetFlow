@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,8 +51,10 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
   const expenseCategories = categories.filter(c => c.type !== 'savings');
 
   const defaultValues = expenseToEdit ? {
-    ...expenseToEdit,
+    amount: expenseToEdit.amount,
+    categoryId: expenseToEdit.categoryId,
     date: parseISO(expenseToEdit.date),
+    notes: expenseToEdit.notes || "",
   } : {
     amount: 0,
     categoryId: "",
@@ -66,7 +69,9 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
 
   function onSubmit(values: ExpenseFormValues) {
     const expenseData = {
-      ...values,
+      amount: values.amount,
+      categoryId: values.categoryId,
+      notes: values.notes || "",
       date: values.date.toISOString(),
     };
 
@@ -154,9 +159,6 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
                     mode="single"
                     selected={field.value}
                     onSelect={field.onChange}
-                    disabled={(date) =>
-                      date > new Date() || date < new Date("1900-01-01")
-                    }
                     initialFocus
                   />
                 </PopoverContent>

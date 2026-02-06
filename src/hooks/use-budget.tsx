@@ -1,8 +1,3 @@
-
-
-
-
-
 "use client";
 
 import React, {
@@ -112,7 +107,6 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   
   const budgets = useMemo(() => {
     if (!budgetsFromHook) return [];
-    // The document ID from firestore is the categoryId
     return budgetsFromHook.map(b => ({ ...b, categoryId: (b as any).id }));
   }, [budgetsFromHook]);
 
@@ -120,7 +114,6 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
   const budgetTarget = userData?.budgetTarget ?? { amount: 0, period: 'daily' };
   const balanceAtBudgetSet = userData?.balanceAtBudgetSet ?? 0;
   const subscriptionTier = userData?.subscriptionTier ?? 'free';
-
 
   const isLoading = userLoading || expensesLoading || incomeLoading || budgetsLoading || sinkingFundsLoading || recurringExpensesLoading;
   
@@ -342,7 +335,6 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
 
     try {
         await runTransaction(firestore, async (transaction) => {
-            // 1. Create the new expense
             const newExpenseRef = doc(expensesColRef);
             transaction.set(newExpenseRef, {
                 amount: fund.currentAmount,
@@ -351,7 +343,6 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
                 notes: `Purchase from sinking fund: ${fund.name}`,
             });
 
-            // 2. Delete the sinking fund
             const fundDocRef = doc(sinkingFundsColRef, sinkingFundId);
             transaction.delete(fundDocRef);
         });
@@ -380,7 +371,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
       const newExpense = {
           amount: expenseToLog.amount,
           categoryId: expenseToLog.categoryId,
-          date: new Date().toISOString(),
+          date: expenseToLog.nextDueDate, // Log it on the due date for past day logging
           notes: expenseToLog.name,
       };
       addDocumentNonBlocking(expensesColRef, newExpense);
@@ -457,7 +448,7 @@ export const BudgetProvider = ({ children }: { children: React.ReactNode }) => {
           dailyTarget = budgetTarget.amount / 7;
           break;
         case 'monthly':
-          dailyTarget = budgetTarget.amount / 30; // Approximation
+          dailyTarget = budgetTarget.amount / 30;
           break;
       }
     }
@@ -540,5 +531,3 @@ export const useBudget = () => {
   }
   return context;
 };
-
-    

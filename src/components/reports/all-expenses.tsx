@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useBudget } from "@/hooks/use-budget";
@@ -46,7 +45,7 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
+const currencyFormatter = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
 });
@@ -222,7 +221,7 @@ export function AllExpenses() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <AddExpenseButton expenseToEdit={expense} />
+                            <AddExpenseButton expenseToEdit={expense} isMenuItem />
                             <DropdownMenuItem
                               className="text-destructive"
                               onSelect={() => deleteExpense(expense.id)}

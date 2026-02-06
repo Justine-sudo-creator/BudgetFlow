@@ -13,7 +13,7 @@ export type Expense = {
   id: string;
   amount: number;
   categoryId: string;
-  notes: string;
+  notes?: string;
   date: string; // ISO 8601 string
 };
 
