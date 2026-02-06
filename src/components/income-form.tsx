@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,7 +33,6 @@ type IncomeFormValues = z.infer<typeof formSchema>;
 export function IncomeForm({ afterSubmit }: { afterSubmit?: () => void }) {
   const { addIncome } = useBudget();
   const { toast } = useToast();
-  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const form = useForm<IncomeFormValues>({
     resolver: zodResolver(formSchema),
@@ -90,7 +88,7 @@ export function IncomeForm({ afterSubmit }: { afterSubmit?: () => void }) {
           render={({ field }) => (
             <FormItem className="flex flex-col">
               <FormLabel>Date</FormLabel>
-              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
@@ -113,12 +111,10 @@ export function IncomeForm({ afterSubmit }: { afterSubmit?: () => void }) {
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={(date) => {
-                      if (date) {
-                        field.onChange(date);
-                        setCalendarOpen(false);
-                      }
-                    }}
+                    onSelect={field.onChange}
+                    captionLayout="dropdown-buttons"
+                    fromYear={2020}
+                    toYear={new Date().getFullYear() + 1}
                     initialFocus
                   />
                 </PopoverContent>

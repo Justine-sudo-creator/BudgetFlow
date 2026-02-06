@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -48,7 +47,6 @@ type ExpenseFormValues = z.infer<typeof formSchema>;
 export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Expense, afterSubmit?: () => void }) {
   const { categories, addExpense, updateExpense } = useBudget();
   const { toast } = useToast();
-  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const expenseCategories = categories.filter(c => c.type !== 'savings');
 
@@ -137,7 +135,7 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
           render={({ field }) => (
             <FormItem className="flex flex-col">
               <FormLabel>Date</FormLabel>
-              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
@@ -160,12 +158,10 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={(date) => {
-                      if (date) {
-                        field.onChange(date);
-                        setCalendarOpen(false);
-                      }
-                    }}
+                    onSelect={field.onChange}
+                    captionLayout="dropdown-buttons"
+                    fromYear={2020}
+                    toYear={new Date().getFullYear() + 1}
                     initialFocus
                   />
                 </PopoverContent>
