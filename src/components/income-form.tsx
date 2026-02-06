@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
+import { useState } from "react";
 
 const formSchema = z.object({
   amount: z.coerce.number().positive("Amount must be positive"),
@@ -33,6 +34,7 @@ type IncomeFormValues = z.infer<typeof formSchema>;
 export function IncomeForm({ afterSubmit }: { afterSubmit?: () => void }) {
   const { addIncome } = useBudget();
   const { toast } = useToast();
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const form = useForm<IncomeFormValues>({
     resolver: zodResolver(formSchema),
@@ -88,7 +90,7 @@ export function IncomeForm({ afterSubmit }: { afterSubmit?: () => void }) {
           render={({ field }) => (
             <FormItem className="flex flex-col">
               <FormLabel>Date</FormLabel>
-              <Popover>
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
@@ -111,10 +113,12 @@ export function IncomeForm({ afterSubmit }: { afterSubmit?: () => void }) {
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={field.onChange}
-                    disabled={(date: Date) =>
-                      date > new Date() || date < new Date("1900-01-01")
-                    }
+                    onSelect={(date) => {
+                      if (date) {
+                        field.onChange(date);
+                        setCalendarOpen(false);
+                      }
+                    }}
                     initialFocus
                   />
                 </PopoverContent>

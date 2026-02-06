@@ -34,6 +34,7 @@ import { Calendar } from "./ui/calendar";
 import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import type { Expense } from "@/lib/types";
+import { useState } from "react";
 
 const formSchema = z.object({
   amount: z.coerce.number().positive("Amount must be positive"),
@@ -47,6 +48,7 @@ type ExpenseFormValues = z.infer<typeof formSchema>;
 export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Expense, afterSubmit?: () => void }) {
   const { categories, addExpense, updateExpense } = useBudget();
   const { toast } = useToast();
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const expenseCategories = categories.filter(c => c.type !== 'savings');
 
@@ -135,7 +137,7 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
           render={({ field }) => (
             <FormItem className="flex flex-col">
               <FormLabel>Date</FormLabel>
-              <Popover>
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
@@ -158,7 +160,12 @@ export function ExpenseForm({ expenseToEdit, afterSubmit }: { expenseToEdit?: Ex
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={field.onChange}
+                    onSelect={(date) => {
+                      if (date) {
+                        field.onChange(date);
+                        setCalendarOpen(false);
+                      }
+                    }}
                     initialFocus
                   />
                 </PopoverContent>
